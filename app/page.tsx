@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 // 8 dimensions, clockwise starting from 12 o'clock.
 const DIMENSIONS = [
@@ -66,11 +66,14 @@ function saveScores(scores: Scores) {
 const MAX_RADIUS = 160;
 const MIN_VISIBLE_RATIO = 0.12;
 
+function sectorRadius(score: number): number {
+  return MAX_RADIUS * (MIN_VISIBLE_RATIO + (score / MAX_SCORE) * (1 - MIN_VISIBLE_RATIO));
+}
+
 function sectorPath(index: number, score: number): string {
   const start = -90 + index * 45;
   const end = start + 45;
-  const ratio = MIN_VISIBLE_RATIO + (score / MAX_SCORE) * (1 - MIN_VISIBLE_RATIO);
-  const r = MAX_RADIUS * ratio;
+  const r = sectorRadius(score);
 
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const x1 = Math.cos(toRad(start)) * r;
@@ -99,9 +102,43 @@ function outlineCircle(): React.ReactElement {
   );
 }
 
+// Given a current rotation (deg, clockwise on screen), find the body angle currently
+// at screen-bottom and look up which sector contains it. The sector's radius shortfall
+// from MAX_RADIUS becomes the wheel's vertical drop ("bob"), so the wheel's bottom
+// stays glued to a fixed ground line. Round wheels (all sectors equal) give zero bob.
+function computeBob(rotation: number, scores: Scores): number {
+  const normalized = (((90 - rotation) % 360) + 360) % 360;
+  const sectorIndex = (Math.floor(normalized / 45) + 2) % 8;
+  const r = sectorRadius(scores[sectorIndex] ?? DEFAULT_SCORE);
+  return MAX_RADIUS - r;
+}
+
+// Eval-mode viewBox is the original square; running mode extends downward to make
+// room for a ground line plus the bob excursion (up to ~MAX_RADIUS * (1-MIN_RATIO)).
+const VBOX_PAD = 20;
+const VBOX_RUN_EXTRA = 160;
+const GROUND_Y = MAX_RADIUS + 6;
+const TICK_SPACING = 30;
+const TICK_COUNT = 14;
+
+const VBOX_EVAL = {
+  x: -MAX_RADIUS - VBOX_PAD,
+  y: -MAX_RADIUS - VBOX_PAD,
+  w: (MAX_RADIUS + VBOX_PAD) * 2,
+  h: (MAX_RADIUS + VBOX_PAD) * 2,
+};
+const VBOX_RUN = {
+  ...VBOX_EVAL,
+  h: VBOX_EVAL.h + VBOX_RUN_EXTRA,
+};
+
 export default function Home() {
   const [scores, setScores] = useState<Scores>(defaultScores);
   const [hydrated, setHydrated] = useState(false);
+  const [mode, setMode] = useState<"eval" | "running">("eval");
+  const [rotation, setRotation] = useState(0);
+  const [groundOffset, setGroundOffset] = useState(0);
+  const rafRef = useRef<number | null>(null);
 
   // Hydrate from localStorage after mount (avoids SSR mismatch).
   useEffect(() => {
@@ -115,6 +152,25 @@ export default function Home() {
     saveScores(scores);
   }, [scores, hydrated]);
 
+  // Drive the wheel animation while in running mode.
+  useEffect(() => {
+    if (mode !== "running") return;
+    const ROT_SPEED_DEG_PER_SEC = 90;
+    const GROUND_SPEED_PX_PER_SEC = 90;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = (now - last) / 1000;
+      last = now;
+      setRotation((r) => (r + ROT_SPEED_DEG_PER_SEC * dt) % 360);
+      setGroundOffset((g) => (g + GROUND_SPEED_PX_PER_SEC * dt) % TICK_SPACING);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [mode]);
+
   const handleChange = useCallback((index: number, value: number) => {
     setScores((prev) => {
       if (prev[index] === value) return prev;
@@ -124,94 +180,184 @@ export default function Home() {
     });
   }, []);
 
+  const handleStart = useCallback(() => {
+    setRotation(0);
+    setGroundOffset(0);
+    setMode("running");
+  }, []);
+
+  const handleRestart = useCallback(() => {
+    setRotation(0);
+    setGroundOffset(0);
+  }, []);
+
+  const handleBack = useCallback(() => {
+    setMode("eval");
+    setRotation(0);
+    setGroundOffset(0);
+  }, []);
+
+  const isRunning = mode === "running";
+  const vbox = isRunning ? VBOX_RUN : VBOX_EVAL;
+  const bob = isRunning ? computeBob(rotation, scores) : 0;
+
   return (
     <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
       <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-10 md:flex-row md:items-start md:gap-12 md:py-16">
         {/* Left: wheel */}
         <section className="flex w-full flex-col items-center md:sticky md:top-10 md:w-1/2">
           <h2 className="mb-6 self-start text-sm font-medium tracking-wide text-zinc-500">
-            你的车轮
+            {isRunning ? "我这辆车" : "你的车轮"}
           </h2>
           <div className="w-full max-w-[420px]">
             <svg
-              viewBox={`${-MAX_RADIUS - 10} ${-MAX_RADIUS - 10} ${(MAX_RADIUS + 10) * 2} ${
-                (MAX_RADIUS + 10) * 2
-              }`}
+              viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
               className="h-auto w-full"
               role="img"
               aria-label="平衡轮"
             >
-              {outlineCircle()}
-              {DIMENSIONS.map((dim, i) => (
-                <path
-                  key={dim.name}
-                  d={sectorPath(i, scores[i] ?? DEFAULT_SCORE)}
-                  fill={dim.color}
-                  stroke="#ffffff"
-                  strokeWidth={1.5}
-                  strokeLinejoin="round"
-                />
-              ))}
-              {/* center dot */}
-              <circle cx={0} cy={0} r={2.5} fill="#27272a" />
+              {!isRunning && outlineCircle()}
+
+              <g
+                transform={`translate(0 ${bob.toFixed(3)}) rotate(${rotation.toFixed(3)})`}
+              >
+                {DIMENSIONS.map((dim, i) => (
+                  <path
+                    key={dim.name}
+                    d={sectorPath(i, scores[i] ?? DEFAULT_SCORE)}
+                    fill={dim.color}
+                    stroke="#ffffff"
+                    strokeWidth={1.5}
+                    strokeLinejoin="round"
+                  />
+                ))}
+                {/* center dot */}
+                <circle cx={0} cy={0} r={2.5} fill="#27272a" />
+              </g>
+
+              {isRunning && (
+                <g>
+                  <line
+                    x1={vbox.x + 4}
+                    y1={GROUND_Y}
+                    x2={vbox.x + vbox.w - 4}
+                    y2={GROUND_Y}
+                    stroke="#a1a1aa"
+                    strokeWidth={1}
+                  />
+                  {Array.from({ length: TICK_COUNT }, (_, i) => {
+                    const x = vbox.x + 4 + i * TICK_SPACING - groundOffset;
+                    return (
+                      <line
+                        key={i}
+                        x1={x}
+                        y1={GROUND_Y + 2}
+                        x2={x - 8}
+                        y2={GROUND_Y + 12}
+                        stroke="#d4d4d8"
+                        strokeWidth={1}
+                      />
+                    );
+                  })}
+                </g>
+              )}
             </svg>
           </div>
         </section>
 
-        {/* Right: sliders */}
+        {/* Right: sliders OR running controls */}
         <section className="w-full md:w-1/2">
-          <header className="mb-8">
-            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
-              平衡轮自评
-            </h1>
-            <p className="mt-2 text-sm text-zinc-500">
-              给 8 个生活维度各打 1 - 10 分。拖动滑块，左侧的轮子会实时变形。
-            </p>
-          </header>
+          {!isRunning ? (
+            <>
+              <header className="mb-8">
+                <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+                  平衡轮自评
+                </h1>
+                <p className="mt-2 text-sm text-zinc-500">
+                  给 8 个生活维度各打 1 - 10 分。拖动滑块，左侧的轮子会实时变形。
+                </p>
+              </header>
 
-          <ul className="flex flex-col gap-5">
-            {DIMENSIONS.map((dim, i) => {
-              const value = scores[i] ?? DEFAULT_SCORE;
-              return (
-                <li key={dim.name} className="flex flex-col gap-2">
-                  <div className="flex items-baseline justify-between">
-                    <label
-                      htmlFor={`slider-${i}`}
-                      className="flex items-center gap-2 text-sm font-medium text-zinc-700"
-                    >
-                      <span
-                        className="inline-block h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: dim.color }}
-                        aria-hidden
+              <ul className="flex flex-col gap-5">
+                {DIMENSIONS.map((dim, i) => {
+                  const value = scores[i] ?? DEFAULT_SCORE;
+                  return (
+                    <li key={dim.name} className="flex flex-col gap-2">
+                      <div className="flex items-baseline justify-between">
+                        <label
+                          htmlFor={`slider-${i}`}
+                          className="flex items-center gap-2 text-sm font-medium text-zinc-700"
+                        >
+                          <span
+                            className="inline-block h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: dim.color }}
+                            aria-hidden
+                          />
+                          {dim.name}
+                        </label>
+                        <span className="tabular-nums text-sm font-semibold text-zinc-900">
+                          {value}
+                        </span>
+                      </div>
+                      <input
+                        id={`slider-${i}`}
+                        type="range"
+                        min={MIN_SCORE}
+                        max={MAX_SCORE}
+                        step={1}
+                        value={value}
+                        onChange={(e) => handleChange(i, Number(e.target.value))}
+                        onInput={(e) =>
+                          handleChange(i, Number((e.target as HTMLInputElement).value))
+                        }
+                        className="w-full accent-zinc-900 h-1 appearance-none cursor-pointer"
+                        style={{ touchAction: "pan-y" }}
+                        aria-label={`${dim.name} 评分`}
+                        aria-valuemin={MIN_SCORE}
+                        aria-valuemax={MAX_SCORE}
+                        aria-valuenow={value}
                       />
-                      {dim.name}
-                    </label>
-                    <span className="tabular-nums text-sm font-semibold text-zinc-900">
-                      {value}
-                    </span>
-                  </div>
-                  <input
-                    id={`slider-${i}`}
-                    type="range"
-                    min={MIN_SCORE}
-                    max={MAX_SCORE}
-                    step={1}
-                    value={value}
-                    onChange={(e) => handleChange(i, Number(e.target.value))}
-                    onInput={(e) =>
-                      handleChange(i, Number((e.target as HTMLInputElement).value))
-                    }
-                    className="w-full accent-zinc-900 h-1 appearance-none cursor-pointer"
-                    style={{ touchAction: "pan-y" }}
-                    aria-label={`${dim.name} 评分`}
-                    aria-valuemin={MIN_SCORE}
-                    aria-valuemax={MAX_SCORE}
-                    aria-valuenow={value}
-                  />
-                </li>
-              );
-            })}
-          </ul>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <button
+                type="button"
+                onClick={handleStart}
+                className="mt-10 w-full rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+              >
+                让我看看我的车
+              </button>
+            </>
+          ) : (
+            <div className="flex flex-col gap-6">
+              <header>
+                <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+                  让它跑一跑
+                </h1>
+                <p className="mt-3 text-sm leading-relaxed text-zinc-500">
+                  这是我现在的车。颠的地方，是我现在的失衡。
+                </p>
+              </header>
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={handleRestart}
+                  className="rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+                >
+                  再跑一次
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
+                >
+                  回去调整
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       </main>
     </div>
