@@ -163,10 +163,12 @@ const VBOX_RUN = {
   h: VBOX_EVAL.h + VBOX_RUN_EXTRA,
 };
 
+type Mode = "eval" | "running" | "reflect";
+
 export default function Home() {
   const [scores, setScores] = useState<Scores>(defaultScores);
   const [hydrated, setHydrated] = useState(false);
-  const [mode, setMode] = useState<"eval" | "running">("eval");
+  const [mode, setMode] = useState<Mode>("eval");
   const [progress, setProgress] = useState(0);
   const [runId, setRunId] = useState(0);
   const rafRef = useRef<number | null>(null);
@@ -184,7 +186,8 @@ export default function Home() {
   }, [scores, hydrated]);
 
   // Drive a single 5-second ride; rAF self-stops at progress=1 so the wheel
-  // rests at its final pose. Bumping runId restarts the ride.
+  // rests at its final pose, then auto-advances to the reflect stage so the
+  // disturbance / question can land without an interrupting button click.
   useEffect(() => {
     if (mode !== "running") return;
     const startedAt = performance.now();
@@ -193,6 +196,8 @@ export default function Home() {
       setProgress(easeInOutQuad(t));
       if (t < 1) {
         rafRef.current = requestAnimationFrame(tick);
+      } else {
+        setMode("reflect");
       }
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -226,13 +231,25 @@ export default function Home() {
     setProgress(0);
   }, []);
 
+  const isEval = mode === "eval";
   const isRunning = mode === "running";
-  const vbox = isRunning ? VBOX_RUN : VBOX_EVAL;
+  const isReflect = mode === "reflect";
+  // Keep the extended viewBox + ground line through the reflect stage so the
+  // wheel rests on the same ground it just rolled across — no layout snap.
+  const showGround = isRunning || isReflect;
+  const vbox = showGround ? VBOX_RUN : VBOX_EVAL;
   const rotation = isRunning ? progress * RUN_TOTAL_ROTATION_DEG : 0;
   const bob = isRunning ? computeBob(rotation, scores) : 0;
   const groundOffset = isRunning
     ? ((rotation * GROUND_PER_DEG) % TICK_SPACING + TICK_SPACING) % TICK_SPACING
     : 0;
+
+  // Lowest-score sectors get the pulse in reflect. Ties pulse together —
+  // honest read of "these are equally bumpy" rather than picking one arbitrarily.
+  const minScore = scores.reduce((a, b) => (b < a ? b : a), MAX_SCORE);
+  const lowestSet = isReflect
+    ? new Set(scores.map((s, i) => (s === minScore ? i : -1)).filter((i) => i >= 0))
+    : null;
 
   return (
     <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
@@ -240,7 +257,7 @@ export default function Home() {
         {/* Left: wheel */}
         <section className="flex w-full flex-col items-center md:sticky md:top-10 md:w-1/2">
           <h2 className="mb-6 self-start text-sm font-medium tracking-wide text-zinc-500">
-            {isRunning ? "我这辆车" : "你的车轮"}
+            {isEval ? "你的车轮" : "我这辆车"}
           </h2>
           <div className="w-full max-w-[420px]">
             <svg
@@ -249,7 +266,7 @@ export default function Home() {
               role="img"
               aria-label="平衡轮"
             >
-              {!isRunning && outlineCircle()}
+              {isEval && outlineCircle()}
 
               <g
                 transform={`translate(0 ${bob.toFixed(3)}) rotate(${rotation.toFixed(3)})`}
@@ -262,13 +279,14 @@ export default function Home() {
                     stroke="#ffffff"
                     strokeWidth={1.5}
                     strokeLinejoin="round"
+                    className={lowestSet?.has(i) ? "pulse-sector" : undefined}
                   />
                 ))}
                 {/* center dot */}
                 <circle cx={0} cy={0} r={2.5} fill="#27272a" />
               </g>
 
-              {isRunning && (
+              {showGround && (
                 <g>
                   <line
                     x1={vbox.x + 4}
@@ -298,9 +316,9 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Right: sliders OR running controls */}
+        {/* Right: sliders / running controls / reflective question */}
         <section className="w-full md:w-1/2">
-          {!isRunning ? (
+          {isEval ? (
             <>
               <header className="mb-8">
                 <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
@@ -363,7 +381,7 @@ export default function Home() {
                 让我看看我的车
               </button>
             </>
-          ) : (
+          ) : isRunning ? (
             <div className="flex flex-col gap-6">
               <header>
                 <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
@@ -381,6 +399,36 @@ export default function Home() {
                 >
                   再跑一次
                 </button>
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
+                >
+                  回去调整
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-10 pt-2">
+              <h1
+                className="fade-rise text-3xl font-medium leading-snug tracking-tight text-zinc-900 md:text-4xl"
+                style={{ animationDelay: "1.2s" }}
+              >
+                我这辆车，颠在哪？
+              </h1>
+              <div
+                className="fade-rise flex flex-col gap-3"
+                style={{ animationDelay: "2.4s" }}
+              >
+                <button
+                  type="button"
+                  disabled
+                  className="cursor-not-allowed rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white opacity-60"
+                  title="Stage 5 即将推出"
+                >
+                  写下我的承诺 →
+                </button>
+                <p className="text-xs text-zinc-400">（Stage 5 即将推出）</p>
                 <button
                   type="button"
                   onClick={handleBack}

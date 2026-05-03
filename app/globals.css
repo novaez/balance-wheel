@@ -68,3 +68,25 @@ input[type="range"]:focus-visible::-webkit-slider-thumb {
 input[type="range"]:focus-visible::-moz-range-thumb {
   box-shadow: 0 0 0 3px #71717a;
 }
+
+/* Stage 4 — pulse the lowest-score sector(s) using their own fill color,
+   only modulating opacity (design principle 7: 视觉克制). */
+@keyframes pulse-sector {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.pulse-sector {
+  animation: pulse-sector 1.4s ease-in-out infinite;
+  transform-origin: 0 0;
+}
+
+/* Reflective text rises gently into place; delays in the JSX sequence the
+   pulse-first / question-second ordering (design principle 3). */
+@keyframes fade-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-rise {
+  opacity: 0;
+  animation: fade-rise 0.8s ease-out forwards;
+}
