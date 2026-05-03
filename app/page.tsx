@@ -224,6 +224,7 @@ export default function Home() {
   const handleRestart = useCallback(() => {
     setProgress(0);
     setRunId((id) => id + 1);
+    setMode("running");
   }, []);
 
   const handleBack = useCallback(() => {
@@ -239,7 +240,10 @@ export default function Home() {
   const showGround = isRunning || isReflect;
   const vbox = showGround ? VBOX_RUN : VBOX_EVAL;
   const rotation = isRunning ? progress * RUN_TOTAL_ROTATION_DEG : 0;
-  const bob = isRunning ? computeBob(rotation, scores) : 0;
+  // In reflect, rotation is 0 (= 720 mod 360, same final orientation), so
+  // computeBob gives the same resting offset the wheel had at end-of-ride —
+  // no upward jolt at the running→reflect transition.
+  const bob = showGround ? computeBob(rotation, scores) : 0;
   const groundOffset = isRunning
     ? ((rotation * GROUND_PER_DEG) % TICK_SPACING + TICK_SPACING) % TICK_SPACING
     : 0;
@@ -382,32 +386,14 @@ export default function Home() {
               </button>
             </>
           ) : isRunning ? (
-            <div className="flex flex-col gap-6">
-              <header>
-                <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
-                  让它跑一跑
-                </h1>
-                <p className="mt-3 text-sm leading-relaxed text-zinc-500">
-                  这是我现在的车。颠的地方，是我现在的失衡。
-                </p>
-              </header>
-              <div className="flex flex-col gap-3">
-                <button
-                  type="button"
-                  onClick={handleRestart}
-                  className="rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
-                >
-                  再跑一次
-                </button>
-                <button
-                  type="button"
-                  onClick={handleBack}
-                  className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
-                >
-                  回去调整
-                </button>
-              </div>
-            </div>
+            <header>
+              <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+                让它跑一跑
+              </h1>
+              <p className="mt-3 text-sm leading-relaxed text-zinc-500">
+                这是我现在的车。颠的地方，是我现在的失衡。
+              </p>
+            </header>
           ) : (
             <div className="flex flex-col gap-10 pt-2">
               <h1
@@ -429,6 +415,13 @@ export default function Home() {
                   写下我的承诺 →
                 </button>
                 <p className="text-xs text-zinc-400">（Stage 5 即将推出）</p>
+                <button
+                  type="button"
+                  onClick={handleRestart}
+                  className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
+                >
+                  再跑一次
+                </button>
                 <button
                   type="button"
                   onClick={handleBack}
