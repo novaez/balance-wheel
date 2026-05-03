@@ -18,40 +18,72 @@ const STORAGE_KEY = "balance-wheel-current";
 const DEFAULT_SCORE = 5;
 const MIN_SCORE = 1;
 const MAX_SCORE = 10;
+const COMMITMENT_MAX_LEN = 80;
 
 type Scores = number[]; // length 8, each 1..10 integer
+type Commitment = { dimension: number; text: string; createdAt: string };
 
 function defaultScores(): Scores {
   return DIMENSIONS.map(() => DEFAULT_SCORE);
 }
 
-function loadScores(): Scores {
-  if (typeof window === "undefined") return defaultScores();
+type StoredState = { scores: Scores; commitment: Commitment | null };
+
+function loadState(): StoredState {
+  if (typeof window === "undefined") {
+    return { scores: defaultScores(), commitment: null };
+  }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return defaultScores();
-    const parsed = JSON.parse(raw) as { scores?: unknown };
-    if (!Array.isArray(parsed.scores) || parsed.scores.length !== DIMENSIONS.length) {
-      return defaultScores();
+    if (!raw) return { scores: defaultScores(), commitment: null };
+    const parsed = JSON.parse(raw) as {
+      scores?: unknown;
+      commitment?: unknown;
+    };
+    // Scores
+    let scores: Scores;
+    if (
+      !Array.isArray(parsed.scores) ||
+      parsed.scores.length !== DIMENSIONS.length
+    ) {
+      scores = defaultScores();
+    } else {
+      scores = parsed.scores.map((v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return DEFAULT_SCORE;
+        const i = Math.round(n);
+        return Math.min(MAX_SCORE, Math.max(MIN_SCORE, i));
+      });
     }
-    const cleaned = parsed.scores.map((v) => {
-      const n = Number(v);
-      if (!Number.isFinite(n)) return DEFAULT_SCORE;
-      const i = Math.round(n);
-      return Math.min(MAX_SCORE, Math.max(MIN_SCORE, i));
-    });
-    return cleaned;
+    // Commitment (backwards compatible: missing/invalid → null)
+    let commitment: Commitment | null = null;
+    const c = parsed.commitment;
+    if (c && typeof c === "object") {
+      const cc = c as Record<string, unknown>;
+      const dim = Number(cc.dimension);
+      const text = typeof cc.text === "string" ? cc.text : "";
+      const createdAt =
+        typeof cc.createdAt === "string" ? cc.createdAt : new Date().toISOString();
+      if (Number.isInteger(dim) && dim >= 0 && dim < DIMENSIONS.length && text.trim()) {
+        commitment = { dimension: dim, text: text.slice(0, COMMITMENT_MAX_LEN), createdAt };
+      }
+    }
+    return { scores, commitment };
   } catch {
-    return defaultScores();
+    return { scores: defaultScores(), commitment: null };
   }
 }
 
-function saveScores(scores: Scores) {
+function saveState(scores: Scores, commitment: Commitment | null) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ scores, updatedAt: new Date().toISOString() })
+      JSON.stringify({
+        scores,
+        commitment,
+        updatedAt: new Date().toISOString(),
+      })
     );
   } catch {
     // ignore quota / privacy mode errors
@@ -163,27 +195,48 @@ const VBOX_RUN = {
   h: VBOX_EVAL.h + VBOX_RUN_EXTRA,
 };
 
-type Mode = "eval" | "running" | "reflect";
+type Mode = "eval" | "running" | "reflect" | "commit" | "done";
 
 export default function Home() {
   const [scores, setScores] = useState<Scores>(defaultScores);
+  const [commitment, setCommitment] = useState<Commitment | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [mode, setMode] = useState<Mode>("eval");
   const [progress, setProgress] = useState(0);
   const [runId, setRunId] = useState(0);
+  // Transient draft state for the commit form (not persisted until submit).
+  const [draftDim, setDraftDim] = useState<number | null>(null);
+  const [draftText, setDraftText] = useState("");
   const rafRef = useRef<number | null>(null);
 
   // Hydrate from localStorage after mount (avoids SSR mismatch).
   useEffect(() => {
-    setScores(loadScores());
+    const s = loadState();
+    setScores(s.scores);
+    setCommitment(s.commitment);
     setHydrated(true);
   }, []);
 
-  // Persist whenever scores change, but only after hydration.
+  // Re-hydrate on bfcache restore (browser back/forward). Without this, a
+  // restored page renders with React state captured at navigation time —
+  // user would see default scores until a manual refresh.
+  useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        const s = loadState();
+        setScores(s.scores);
+        setCommitment(s.commitment);
+      }
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
+
+  // Persist whenever scores or commitment change, but only after hydration.
   useEffect(() => {
     if (!hydrated) return;
-    saveScores(scores);
-  }, [scores, hydrated]);
+    saveState(scores, commitment);
+  }, [scores, commitment, hydrated]);
 
   // Drive a single 5-second ride; rAF self-stops at progress=1 so the wheel
   // rests at its final pose, then auto-advances to the reflect stage so the
@@ -215,13 +268,7 @@ export default function Home() {
     });
   }, []);
 
-  const handleStart = useCallback(() => {
-    setProgress(0);
-    setRunId((id) => id + 1);
-    setMode("running");
-  }, []);
-
-  const handleRestart = useCallback(() => {
+  const startRide = useCallback(() => {
     setProgress(0);
     setRunId((id) => id + 1);
     setMode("running");
@@ -232,24 +279,61 @@ export default function Home() {
     setProgress(0);
   }, []);
 
+  // Fresh entry from reflect: do NOT pre-select a sector. When scores tie at
+  // the bottom the pulse lights several sectors, so any single auto-pick
+  // would feel arbitrary against what the user just saw. Letting the user
+  // pick deliberately also fits reflective inquiry better than auto-pick.
+  const handleEnterCommitFresh = useCallback(() => {
+    setDraftDim(null);
+    setDraftText("");
+    setMode("commit");
+  }, []);
+
+  // Explicit edit from done: pre-fill with the existing commitment so the
+  // user tweaks rather than rewrites.
+  const handleEditCommitment = useCallback(() => {
+    if (commitment) {
+      setDraftDim(commitment.dimension);
+      setDraftText(commitment.text);
+    } else {
+      setDraftDim(null);
+      setDraftText("");
+    }
+    setMode("commit");
+  }, [commitment]);
+
+  const handleSubmitCommitment = useCallback(() => {
+    if (draftDim == null) return;
+    const text = draftText.trim();
+    if (!text) return;
+    setCommitment({
+      dimension: draftDim,
+      text: text.slice(0, COMMITMENT_MAX_LEN),
+      createdAt: new Date().toISOString(),
+    });
+    setMode("done");
+  }, [draftDim, draftText]);
+
   const isEval = mode === "eval";
   const isRunning = mode === "running";
   const isReflect = mode === "reflect";
-  // Keep the extended viewBox + ground line through the reflect stage so the
-  // wheel rests on the same ground it just rolled across — no layout snap.
-  const showGround = isRunning || isReflect;
+  const isCommit = mode === "commit";
+  const isDone = mode === "done";
+  // Keep the extended viewBox + ground line through everything past eval so
+  // the wheel rests on the same ground it just rolled across — no layout snap.
+  const showGround = !isEval;
   const vbox = showGround ? VBOX_RUN : VBOX_EVAL;
   const rotation = isRunning ? progress * RUN_TOTAL_ROTATION_DEG : 0;
-  // In reflect, rotation is 0 (= 720 mod 360, same final orientation), so
-  // computeBob gives the same resting offset the wheel had at end-of-ride —
-  // no upward jolt at the running→reflect transition.
+  // In reflect/commit/done, rotation is 0 (= 720 mod 360, same final
+  // orientation), so computeBob gives the same resting offset the wheel had
+  // at end-of-ride — no upward jolt at running→reflect transition.
   const bob = showGround ? computeBob(rotation, scores) : 0;
   const groundOffset = isRunning
     ? ((rotation * GROUND_PER_DEG) % TICK_SPACING + TICK_SPACING) % TICK_SPACING
     : 0;
 
-  // Lowest-score sectors get the pulse in reflect. Ties pulse together —
-  // honest read of "these are equally bumpy" rather than picking one arbitrarily.
+  // Pulse only fires in reflect; once the user moves to commit/done, the form
+  // is the focus, so the disturbance cue stops to avoid distraction.
   const minScore = scores.reduce((a, b) => (b < a ? b : a), MAX_SCORE);
   const lowestSet = isReflect
     ? new Set(scores.map((s, i) => (s === minScore ? i : -1)).filter((i) => i >= 0))
@@ -320,7 +404,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Right: sliders / running controls / reflective question */}
+        {/* Right: sliders / running / reflect / commit / done */}
         <section className="w-full md:w-1/2">
           {isEval ? (
             <>
@@ -379,7 +463,7 @@ export default function Home() {
 
               <button
                 type="button"
-                onClick={handleStart}
+                onClick={startRide}
                 className="mt-10 w-full rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
               >
                 让我看看我的车
@@ -394,7 +478,7 @@ export default function Home() {
                 这是我现在的车。颠的地方，是我现在的失衡。
               </p>
             </header>
-          ) : (
+          ) : isReflect ? (
             <div className="flex flex-col gap-10 pt-2">
               <h1
                 className="fade-rise text-3xl font-medium leading-snug tracking-tight text-zinc-900 md:text-4xl"
@@ -408,16 +492,14 @@ export default function Home() {
               >
                 <button
                   type="button"
-                  disabled
-                  className="cursor-not-allowed rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white opacity-60"
-                  title="Stage 5 即将推出"
+                  onClick={handleEnterCommitFresh}
+                  className="rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
                 >
                   写下我的承诺 →
                 </button>
-                <p className="text-xs text-zinc-400">（Stage 5 即将推出）</p>
                 <button
                   type="button"
-                  onClick={handleRestart}
+                  onClick={startRide}
                   className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
                 >
                   再跑一次
@@ -431,7 +513,140 @@ export default function Home() {
                 </button>
               </div>
             </div>
-          )}
+          ) : isCommit ? (
+            <div className="flex flex-col gap-6 pt-2">
+              <h1 className="text-2xl font-medium leading-snug tracking-tight text-zinc-900 md:text-3xl">
+                下周我想先照顾哪一格，做哪一件小事？
+              </h1>
+
+              <div>
+                <label className="mb-3 block text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  先选一格
+                </label>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {DIMENSIONS.map((dim, i) => {
+                    const selected = draftDim === i;
+                    return (
+                      <button
+                        key={dim.name}
+                        type="button"
+                        onClick={() => setDraftDim(i)}
+                        aria-pressed={selected}
+                        className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
+                          selected
+                            ? "border-zinc-900 bg-white text-zinc-900"
+                            : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
+                        }`}
+                      >
+                        <span
+                          className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: dim.color }}
+                          aria-hidden
+                        />
+                        <span className="truncate">{dim.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="commit-text"
+                  className="mb-3 block text-xs font-medium uppercase tracking-wide text-zinc-500"
+                >
+                  下周做哪件小事
+                </label>
+                <input
+                  id="commit-text"
+                  type="text"
+                  value={draftText}
+                  onChange={(e) => setDraftText(e.target.value)}
+                  placeholder="比如：跟伴侣安静吃顿饭"
+                  maxLength={COMMITMENT_MAX_LEN}
+                  className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2.5 text-base text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
+                />
+              </div>
+
+              <p className="text-xs text-zinc-400">只写给自己看，不发给任何人。</p>
+
+              <div className="flex flex-col gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleSubmitCommitment}
+                  disabled={draftDim == null || !draftText.trim()}
+                  className={`rounded-full px-6 py-3 text-base font-medium transition-colors ${
+                    draftDim != null && draftText.trim()
+                      ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800"
+                      : "cursor-not-allowed bg-zinc-200 text-zinc-400"
+                  }`}
+                >
+                  记下来 →
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("reflect")}
+                  className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
+                >
+                  回去看车
+                </button>
+              </div>
+            </div>
+          ) : isDone && commitment ? (
+            <div className="flex flex-col gap-6 pt-2">
+              <h1
+                className="fade-rise text-2xl font-medium leading-snug tracking-tight text-zinc-900 md:text-3xl"
+                style={{ animationDelay: "0.2s" }}
+              >
+                记下了。
+              </h1>
+
+              <div
+                className="fade-rise rounded-lg border border-zinc-200 bg-white p-5"
+                style={{ animationDelay: "0.6s" }}
+              >
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  下周我想先照顾
+                </p>
+                <p className="mt-2 flex items-center gap-2 text-base text-zinc-900">
+                  <span
+                    className="inline-block h-3 w-3 rounded-full"
+                    style={{ backgroundColor: DIMENSIONS[commitment.dimension].color }}
+                    aria-hidden
+                  />
+                  <span className="font-medium">
+                    {DIMENSIONS[commitment.dimension].name}
+                  </span>
+                </p>
+                <p className="mt-3 text-base leading-relaxed text-zinc-900">
+                  {commitment.text}
+                </p>
+                <p className="mt-5 text-xs text-zinc-400">
+                  想分享，可以截屏发给在乎的人。
+                </p>
+              </div>
+
+              <div
+                className="fade-rise flex flex-col gap-3 pt-2"
+                style={{ animationDelay: "1.0s" }}
+              >
+                <button
+                  type="button"
+                  onClick={handleEditCommitment}
+                  className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
+                >
+                  改一下我的承诺
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
+                >
+                  回去调整车轮
+                </button>
+              </div>
+            </div>
+          ) : null}
         </section>
       </main>
     </div>
