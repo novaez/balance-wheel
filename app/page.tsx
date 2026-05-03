@@ -102,15 +102,46 @@ function outlineCircle(): React.ReactElement {
   );
 }
 
-// Given a current rotation (deg, clockwise on screen), find the body angle currently
-// at screen-bottom and look up which sector contains it. The sector's radius shortfall
-// from MAX_RADIUS becomes the wheel's vertical drop ("bob"), so the wheel's bottom
-// stays glued to a fixed ground line. Round wheels (all sectors equal) give zero bob.
+// Find the wheel outline's lowest point in screen-y for a given rotation.
+// Each sector contributes (its arc's max screen-y) within its current angular
+// range; boundary corners between sectors are captured by the endpoint sin
+// values. The wheel drops by MAX_RADIUS - maxY so its lowest point sits on the
+// ground line. This gives a smooth transition: as a tall sector's edge sweeps
+// past 90°, the wheel rises immediately rather than waiting for the sector
+// center to reach screen-bottom.
+const SECTOR_DEG = 45;
+
 function computeBob(rotation: number, scores: Scores): number {
-  const normalized = (((90 - rotation) % 360) + 360) % 360;
-  const sectorIndex = (Math.floor(normalized / 45) + 2) % 8;
-  const r = sectorRadius(scores[sectorIndex] ?? DEFAULT_SCORE);
-  return MAX_RADIUS - r;
+  let maxY = 0;
+  for (let i = 0; i < 8; i++) {
+    const r = sectorRadius(scores[i] ?? DEFAULT_SCORE);
+    const startScreen = -90 + i * SECTOR_DEG + rotation;
+    const endScreen = startScreen + SECTOR_DEG;
+    // sin peaks at 1 when angle = 90 + 360k. Does any such peak fall in [start, end]?
+    const k = Math.ceil((startScreen - 90) / 360);
+    const peakInRange = 90 + 360 * k <= endScreen;
+    const maxSin = peakInRange
+      ? 1
+      : Math.max(
+          Math.sin((startScreen * Math.PI) / 180),
+          Math.sin((endScreen * Math.PI) / 180)
+        );
+    if (maxSin > 0) {
+      const sectorMaxY = r * maxSin;
+      if (sectorMaxY > maxY) maxY = sectorMaxY;
+    }
+  }
+  return MAX_RADIUS - maxY;
+}
+
+// One trip: 2 full turns over 5s, ease-in-out so the ride starts gently,
+// peaks in the middle, and glides to a stop. Final orientation matches start.
+const RUN_DURATION_MS = 5000;
+const RUN_TOTAL_ROTATION_DEG = 720;
+const GROUND_PER_DEG = 2.5;
+
+function easeInOutQuad(x: number): number {
+  return x < 0.5 ? 2 * x * x : 1 - 2 * (1 - x) * (1 - x);
 }
 
 // Eval-mode viewBox is the original square; running mode extends downward to make
@@ -136,8 +167,8 @@ export default function Home() {
   const [scores, setScores] = useState<Scores>(defaultScores);
   const [hydrated, setHydrated] = useState(false);
   const [mode, setMode] = useState<"eval" | "running">("eval");
-  const [rotation, setRotation] = useState(0);
-  const [groundOffset, setGroundOffset] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [runId, setRunId] = useState(0);
   const rafRef = useRef<number | null>(null);
 
   // Hydrate from localStorage after mount (avoids SSR mismatch).
@@ -152,24 +183,23 @@ export default function Home() {
     saveScores(scores);
   }, [scores, hydrated]);
 
-  // Drive the wheel animation while in running mode.
+  // Drive a single 5-second ride; rAF self-stops at progress=1 so the wheel
+  // rests at its final pose. Bumping runId restarts the ride.
   useEffect(() => {
     if (mode !== "running") return;
-    const ROT_SPEED_DEG_PER_SEC = 90;
-    const GROUND_SPEED_PX_PER_SEC = 90;
-    let last = performance.now();
+    const startedAt = performance.now();
     const tick = (now: number) => {
-      const dt = (now - last) / 1000;
-      last = now;
-      setRotation((r) => (r + ROT_SPEED_DEG_PER_SEC * dt) % 360);
-      setGroundOffset((g) => (g + GROUND_SPEED_PX_PER_SEC * dt) % TICK_SPACING);
-      rafRef.current = requestAnimationFrame(tick);
+      const t = Math.min(now - startedAt, RUN_DURATION_MS) / RUN_DURATION_MS;
+      setProgress(easeInOutQuad(t));
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-  }, [mode]);
+  }, [mode, runId]);
 
   const handleChange = useCallback((index: number, value: number) => {
     setScores((prev) => {
@@ -181,25 +211,28 @@ export default function Home() {
   }, []);
 
   const handleStart = useCallback(() => {
-    setRotation(0);
-    setGroundOffset(0);
+    setProgress(0);
+    setRunId((id) => id + 1);
     setMode("running");
   }, []);
 
   const handleRestart = useCallback(() => {
-    setRotation(0);
-    setGroundOffset(0);
+    setProgress(0);
+    setRunId((id) => id + 1);
   }, []);
 
   const handleBack = useCallback(() => {
     setMode("eval");
-    setRotation(0);
-    setGroundOffset(0);
+    setProgress(0);
   }, []);
 
   const isRunning = mode === "running";
   const vbox = isRunning ? VBOX_RUN : VBOX_EVAL;
+  const rotation = isRunning ? progress * RUN_TOTAL_ROTATION_DEG : 0;
   const bob = isRunning ? computeBob(rotation, scores) : 0;
+  const groundOffset = isRunning
+    ? ((rotation * GROUND_PER_DEG) % TICK_SPACING + TICK_SPACING) % TICK_SPACING
+    : 0;
 
   return (
     <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
