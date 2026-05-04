@@ -20,10 +20,6 @@ const MIN_SCORE = 1;
 const MAX_SCORE = 10;
 const PRESENCE_MAX_LEN = 240;
 const COMMITMENT_MAX_LEN = 80;
-// Pause length after the user's last keystroke that triggers the witness
-// affordance. 800ms (brief's hint) felt rushed in self-test — users mid-thought
-// commonly pause that long; 1500ms gives a deliberate breath without dragging.
-const WITNESS_DEBOUNCE_MS = 1500;
 
 type Scores = number[]; // length 8, each 1..10 integer
 type Presence = { text: string; at: string };
@@ -146,7 +142,10 @@ function sectorPath(index: number, score: number): string {
   )} 0 0 1 ${x2.toFixed(3)} ${y2.toFixed(3)} Z`;
 }
 
-// Reference outline at full radius — a subtle ring so users see the "perfect circle" target.
+// Reference outline at exactly MAX_RADIUS — a 10-score sector touches it
+// (that's what "10 / 满分" means). Visibility under partial scores comes
+// from stroke depth (zinc-400 dashed on a near-white background), not from
+// physical distance from the wheel.
 function outlineCircle(): React.ReactElement {
   return (
     <circle
@@ -154,7 +153,7 @@ function outlineCircle(): React.ReactElement {
       cy={0}
       r={MAX_RADIUS}
       fill="none"
-      stroke="#e4e4e7" // zinc-200
+      stroke="#a1a1aa" // zinc-400
       strokeWidth={1}
       strokeDasharray="2 4"
     />
@@ -203,22 +202,27 @@ function easeInOutQuad(x: number): number {
   return x < 0.5 ? 2 * x * x : 1 - 2 * (1 - x) * (1 - x);
 }
 
-// Eval-mode viewBox is the original square; running mode extends downward to make
-// room for a ground line plus the bob excursion (up to ~MAX_RADIUS * (1-MIN_RATIO)).
+// Eval-mode viewBox is the original square; post-eval modes extend downward
+// for the ground line + bob excursion, and outward horizontally to make room
+// for the 8 dimension labels that orbit the wheel.
 const VBOX_PAD = 20;
 const VBOX_RUN_EXTRA = 160;
+const VBOX_LABEL_PAD = 56;
+const LABEL_RADIUS = MAX_RADIUS + 24;
 const GROUND_Y = MAX_RADIUS + 6;
 const TICK_SPACING = 30;
 const TICK_COUNT = 14;
 
 const VBOX_EVAL = {
-  x: -MAX_RADIUS - VBOX_PAD,
+  x: -MAX_RADIUS - VBOX_LABEL_PAD,
   y: -MAX_RADIUS - VBOX_PAD,
-  w: (MAX_RADIUS + VBOX_PAD) * 2,
+  w: (MAX_RADIUS + VBOX_LABEL_PAD) * 2,
   h: (MAX_RADIUS + VBOX_PAD) * 2,
 };
 const VBOX_RUN = {
-  ...VBOX_EVAL,
+  x: -MAX_RADIUS - VBOX_LABEL_PAD,
+  y: -MAX_RADIUS - VBOX_PAD,
+  w: (MAX_RADIUS + VBOX_LABEL_PAD) * 2,
   h: VBOX_EVAL.h + VBOX_RUN_EXTRA,
 };
 
@@ -240,7 +244,6 @@ export default function Home() {
   const [presencePhase, setPresencePhase] = useState<PresencePhase>("input");
   const [commitDraft, setCommitDraft] = useState("");
   const rafRef = useRef<number | null>(null);
-  const witnessTimerRef = useRef<number | null>(null);
 
   // Hydrate from localStorage after mount (avoids SSR mismatch).
   useEffect(() => {
@@ -294,23 +297,6 @@ export default function Home() {
     };
   }, [mode, runId]);
 
-  // Clear the witness debounce on unmount or when leaving presence — otherwise
-  // a stale timer could fire after the user has moved on.
-  useEffect(() => {
-    if (mode !== "presence") {
-      if (witnessTimerRef.current != null) {
-        window.clearTimeout(witnessTimerRef.current);
-        witnessTimerRef.current = null;
-      }
-    }
-    return () => {
-      if (witnessTimerRef.current != null) {
-        window.clearTimeout(witnessTimerRef.current);
-        witnessTimerRef.current = null;
-      }
-    };
-  }, [mode]);
-
   const handleChange = useCallback((index: number, value: number) => {
     setScores((prev) => {
       if (prev[index] === value) return prev;
@@ -324,6 +310,9 @@ export default function Home() {
     setProgress(0);
     setRunId((id) => id + 1);
     setMode("running");
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }, []);
 
   const handleBack = useCallback(() => {
@@ -341,39 +330,32 @@ export default function Home() {
     setMode("presence");
   }, []);
 
-  // Witness affordance — called on debounced typing pause OR on textarea
-  // blur. Persists presence to state (which auto-saves to localStorage) and
-  // flips the phase. Idempotent: safe if called multiple times.
+  // Witness affordance — fires when the user explicitly says "我说完了" or
+  // when the textarea blurs. Idle pause (debounce) was tried and removed:
+  // long thoughts naturally include >1.5s pauses, which falsely triggered
+  // the flip mid-sentence. User-asserted action is the right signal.
   const witnessNow = useCallback((rawText: string) => {
     const text = rawText.trim();
     if (!text) return;
     setPresence({ text: text.slice(0, PRESENCE_MAX_LEN), at: new Date().toISOString() });
     setPresencePhase("witnessed");
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }, []);
 
   const handlePresenceChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const v = e.target.value;
-      setPresenceDraft(v);
-      if (witnessTimerRef.current != null) {
-        window.clearTimeout(witnessTimerRef.current);
-        witnessTimerRef.current = null;
-      }
-      const trimmed = v.trim();
-      if (trimmed) {
-        witnessTimerRef.current = window.setTimeout(() => {
-          witnessNow(trimmed);
-        }, WITNESS_DEBOUNCE_MS);
-      }
+      setPresenceDraft(e.target.value);
     },
-    [witnessNow]
+    []
   );
 
   const handlePresenceBlur = useCallback(() => {
-    if (witnessTimerRef.current != null) {
-      window.clearTimeout(witnessTimerRef.current);
-      witnessTimerRef.current = null;
-    }
+    witnessNow(presenceDraft);
+  }, [presenceDraft, witnessNow]);
+
+  const handleWitnessClick = useCallback(() => {
     witnessNow(presenceDraft);
   }, [presenceDraft, witnessNow]);
 
@@ -417,37 +399,74 @@ export default function Home() {
 
   return (
     <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
-      <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-10 md:flex-row md:items-start md:gap-12 md:py-16">
+      <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 pt-16 pb-10 md:flex-row md:items-start md:gap-12 md:py-16">
         {/* Left: wheel */}
-        <section className="flex w-full flex-col items-center md:sticky md:top-10 md:w-1/2">
+        <section
+          className={[
+            "flex w-full flex-col items-center",
+            "md:w-1/2 md:sticky md:top-10",
+            isEval ? "sticky top-0 z-10 bg-zinc-50/95 pt-4 pb-2 backdrop-blur border-b border-zinc-200" : "",
+            "md:bg-transparent md:pt-0 md:pb-0 md:backdrop-blur-none",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
           <h2 className="mb-6 self-start text-sm font-medium tracking-wide text-zinc-500">
             {isEval ? "你的车轮" : "我这辆车"}
           </h2>
-          <div className="w-full max-w-[420px]">
+          <div className="w-full max-w-[340px] md:max-w-[440px]">
             <svg
               viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
               className="h-auto w-full"
               role="img"
               aria-label="平衡轮"
             >
-              {isEval && outlineCircle()}
+              {/* Outline + labels — geometric annotations of the wheel,
+                  share the bob translate so they sink with the wheel; both
+                  stay outside the rotate group so running doesn't spin them. */}
+              <g transform={`translate(0 ${bob.toFixed(3)})`}>
+                {outlineCircle()}
+                {!isRunning &&
+                  DIMENSIONS.map((dim, i) => {
+                    const angle = -90 + i * SECTOR_DEG + SECTOR_DEG / 2;
+                    const rad = (angle * Math.PI) / 180;
+                    const lx = Math.cos(rad) * LABEL_RADIUS;
+                    const ly = Math.sin(rad) * LABEL_RADIUS;
+                    const isPulsing = isReflect && lowestSet?.has(i);
+                    return (
+                      <text
+                        key={`label-${dim.name}`}
+                        x={lx}
+                        y={ly}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize="14"
+                        fill={dim.color}
+                        fontWeight={isPulsing ? 700 : 400}
+                        style={{ transition: "font-weight 0.5s" }}
+                      >
+                        {dim.name}
+                      </text>
+                    );
+                  })}
+              </g>
 
-              <g
-                transform={`translate(0 ${bob.toFixed(3)}) rotate(${rotation.toFixed(3)})`}
-              >
-                {DIMENSIONS.map((dim, i) => (
-                  <path
-                    key={dim.name}
-                    d={sectorPath(i, scores[i] ?? DEFAULT_SCORE)}
-                    fill={dim.color}
-                    stroke="#ffffff"
-                    strokeWidth={1.5}
-                    strokeLinejoin="round"
-                    className={lowestSet?.has(i) ? "pulse-sector" : undefined}
-                  />
-                ))}
-                {/* center dot */}
-                <circle cx={0} cy={0} r={2.5} fill="#27272a" />
+              <g transform={`translate(0 ${bob.toFixed(3)})`}>
+                <g transform={`rotate(${rotation.toFixed(3)})`}>
+                  {DIMENSIONS.map((dim, i) => (
+                    <path
+                      key={dim.name}
+                      d={sectorPath(i, scores[i] ?? DEFAULT_SCORE)}
+                      fill={dim.color}
+                      stroke="#ffffff"
+                      strokeWidth={1.5}
+                      strokeLinejoin="round"
+                      className={lowestSet?.has(i) ? "pulse-sector" : undefined}
+                    />
+                  ))}
+                  {/* center dot */}
+                  <circle cx={0} cy={0} r={2.5} fill="#27272a" />
+                </g>
               </g>
 
               {showGround && (
@@ -526,7 +545,7 @@ export default function Home() {
                           handleChange(i, Number((e.target as HTMLInputElement).value))
                         }
                         className="w-full accent-zinc-900 h-1 appearance-none cursor-pointer"
-                        style={{ touchAction: "pan-y" }}
+                        style={{ touchAction: "none" }}
                         aria-label={`${dim.name} 评分`}
                         aria-valuemin={MIN_SCORE}
                         aria-valuemax={MAX_SCORE}
@@ -542,7 +561,7 @@ export default function Home() {
                 onClick={startRide}
                 className="mt-10 w-full rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
               >
-                让我看看我的车
+                让它跑一跑 →
               </button>
             </>
           ) : isRunning ? (
@@ -571,7 +590,7 @@ export default function Home() {
                   onClick={handleEnterPresence}
                   className="rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
                 >
-                  停下来 →
+                  写下我此刻的感觉 →
                 </button>
                 <button
                   type="button"
@@ -608,6 +627,15 @@ export default function Home() {
                     className="w-full resize-none border-none bg-transparent p-0 text-2xl font-light leading-relaxed text-zinc-900 placeholder:text-zinc-300 focus:outline-none md:text-3xl"
                     aria-label="我此刻感觉到"
                   />
+                  {presenceDraft.trim() && (
+                    <button
+                      type="button"
+                      onClick={handleWitnessClick}
+                      className="fade-rise self-start text-sm text-zinc-700 underline-offset-4 transition-colors hover:text-zinc-900 hover:underline"
+                    >
+                      我说完了 →
+                    </button>
+                  )}
                 </>
               ) : (
                 <>
