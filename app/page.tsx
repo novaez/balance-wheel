@@ -18,26 +18,37 @@ const STORAGE_KEY = "balance-wheel-current";
 const DEFAULT_SCORE = 5;
 const MIN_SCORE = 1;
 const MAX_SCORE = 10;
+const PRESENCE_MAX_LEN = 240;
 const COMMITMENT_MAX_LEN = 80;
+// Pause length after the user's last keystroke that triggers the witness
+// affordance. 800ms (brief's hint) felt rushed in self-test — users mid-thought
+// commonly pause that long; 1500ms gives a deliberate breath without dragging.
+const WITNESS_DEBOUNCE_MS = 1500;
 
 type Scores = number[]; // length 8, each 1..10 integer
-type Commitment = { dimension: number; text: string; createdAt: string };
+type Presence = { text: string; at: string };
+type Commitment = { text: string; at: string };
 
 function defaultScores(): Scores {
   return DIMENSIONS.map(() => DEFAULT_SCORE);
 }
 
-type StoredState = { scores: Scores; commitment: Commitment | null };
+type StoredState = {
+  scores: Scores;
+  presence: Presence | null;
+  commitment: Commitment | null;
+};
 
 function loadState(): StoredState {
   if (typeof window === "undefined") {
-    return { scores: defaultScores(), commitment: null };
+    return { scores: defaultScores(), presence: null, commitment: null };
   }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { scores: defaultScores(), commitment: null };
+    if (!raw) return { scores: defaultScores(), presence: null, commitment: null };
     const parsed = JSON.parse(raw) as {
       scores?: unknown;
+      presence?: unknown;
       commitment?: unknown;
     };
     // Scores
@@ -55,32 +66,48 @@ function loadState(): StoredState {
         return Math.min(MAX_SCORE, Math.max(MIN_SCORE, i));
       });
     }
-    // Commitment (backwards compatible: missing/invalid → null)
+    // Presence (v2 field, may be absent on old data)
+    let presence: Presence | null = null;
+    const p = parsed.presence;
+    if (p && typeof p === "object") {
+      const pp = p as Record<string, unknown>;
+      const text = typeof pp.text === "string" ? pp.text.trim() : "";
+      const at = typeof pp.at === "string" ? pp.at : new Date().toISOString();
+      if (text) presence = { text: text.slice(0, PRESENCE_MAX_LEN), at };
+    }
+    // Commitment (v1 had {dimension, text, createdAt}; v2 keeps text only).
+    // Old `dimension` is ignored; old `createdAt` migrates to `at`.
     let commitment: Commitment | null = null;
     const c = parsed.commitment;
     if (c && typeof c === "object") {
       const cc = c as Record<string, unknown>;
-      const dim = Number(cc.dimension);
-      const text = typeof cc.text === "string" ? cc.text : "";
-      const createdAt =
-        typeof cc.createdAt === "string" ? cc.createdAt : new Date().toISOString();
-      if (Number.isInteger(dim) && dim >= 0 && dim < DIMENSIONS.length && text.trim()) {
-        commitment = { dimension: dim, text: text.slice(0, COMMITMENT_MAX_LEN), createdAt };
-      }
+      const text = typeof cc.text === "string" ? cc.text.trim() : "";
+      const at =
+        typeof cc.at === "string"
+          ? cc.at
+          : typeof cc.createdAt === "string"
+          ? cc.createdAt
+          : new Date().toISOString();
+      if (text) commitment = { text: text.slice(0, COMMITMENT_MAX_LEN), at };
     }
-    return { scores, commitment };
+    return { scores, presence, commitment };
   } catch {
-    return { scores: defaultScores(), commitment: null };
+    return { scores: defaultScores(), presence: null, commitment: null };
   }
 }
 
-function saveState(scores: Scores, commitment: Commitment | null) {
+function saveState(
+  scores: Scores,
+  presence: Presence | null,
+  commitment: Commitment | null
+) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
         scores,
+        presence,
         commitment,
         updatedAt: new Date().toISOString(),
       })
@@ -195,24 +222,31 @@ const VBOX_RUN = {
   h: VBOX_EVAL.h + VBOX_RUN_EXTRA,
 };
 
-type Mode = "eval" | "running" | "reflect" | "commit" | "done";
+type Mode = "eval" | "running" | "reflect" | "presence" | "done";
+type PresencePhase = "input" | "witnessed";
 
 export default function Home() {
   const [scores, setScores] = useState<Scores>(defaultScores);
+  const [presence, setPresence] = useState<Presence | null>(null);
   const [commitment, setCommitment] = useState<Commitment | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [mode, setMode] = useState<Mode>("eval");
   const [progress, setProgress] = useState(0);
   const [runId, setRunId] = useState(0);
-  // Transient draft state for the commit form (not persisted until submit).
-  const [draftDim, setDraftDim] = useState<number | null>(null);
-  const [draftText, setDraftText] = useState("");
+  // Stage 5 v2 transient state. presenceDraft is what the textarea holds while
+  // the user types; presencePhase gates whether the witness affordance has
+  // fired (input → witnessed). commitDraft is the optional follow-up.
+  const [presenceDraft, setPresenceDraft] = useState("");
+  const [presencePhase, setPresencePhase] = useState<PresencePhase>("input");
+  const [commitDraft, setCommitDraft] = useState("");
   const rafRef = useRef<number | null>(null);
+  const witnessTimerRef = useRef<number | null>(null);
 
   // Hydrate from localStorage after mount (avoids SSR mismatch).
   useEffect(() => {
     const s = loadState();
     setScores(s.scores);
+    setPresence(s.presence);
     setCommitment(s.commitment);
     setHydrated(true);
   }, []);
@@ -225,6 +259,7 @@ export default function Home() {
       if (e.persisted) {
         const s = loadState();
         setScores(s.scores);
+        setPresence(s.presence);
         setCommitment(s.commitment);
       }
     };
@@ -232,11 +267,11 @@ export default function Home() {
     return () => window.removeEventListener("pageshow", onPageShow);
   }, []);
 
-  // Persist whenever scores or commitment change, but only after hydration.
+  // Persist whenever any persisted field changes, but only after hydration.
   useEffect(() => {
     if (!hydrated) return;
-    saveState(scores, commitment);
-  }, [scores, commitment, hydrated]);
+    saveState(scores, presence, commitment);
+  }, [scores, presence, commitment, hydrated]);
 
   // Drive a single 5-second ride; rAF self-stops at progress=1 so the wheel
   // rests at its final pose, then auto-advances to the reflect stage so the
@@ -259,6 +294,23 @@ export default function Home() {
     };
   }, [mode, runId]);
 
+  // Clear the witness debounce on unmount or when leaving presence — otherwise
+  // a stale timer could fire after the user has moved on.
+  useEffect(() => {
+    if (mode !== "presence") {
+      if (witnessTimerRef.current != null) {
+        window.clearTimeout(witnessTimerRef.current);
+        witnessTimerRef.current = null;
+      }
+    }
+    return () => {
+      if (witnessTimerRef.current != null) {
+        window.clearTimeout(witnessTimerRef.current);
+        witnessTimerRef.current = null;
+      }
+    };
+  }, [mode]);
+
   const handleChange = useCallback((index: number, value: number) => {
     setScores((prev) => {
       if (prev[index] === value) return prev;
@@ -279,52 +331,76 @@ export default function Home() {
     setProgress(0);
   }, []);
 
-  // Fresh entry from reflect: do NOT pre-select a sector. When scores tie at
-  // the bottom the pulse lights several sectors, so any single auto-pick
-  // would feel arbitrary against what the user just saw. Letting the user
-  // pick deliberately also fits reflective inquiry better than auto-pick.
-  const handleEnterCommitFresh = useCallback(() => {
-    setDraftDim(null);
-    setDraftText("");
-    setMode("commit");
+  // Fresh entry into Stage 5 v2 from reflect: clear any prior drafts. The
+  // brief is explicit — re-entering presence should start blank, never edit
+  // prior text. Persisted presence/commitment in state still surface in done.
+  const handleEnterPresence = useCallback(() => {
+    setPresenceDraft("");
+    setCommitDraft("");
+    setPresencePhase("input");
+    setMode("presence");
   }, []);
 
-  // Explicit edit from done: pre-fill with the existing commitment so the
-  // user tweaks rather than rewrites.
-  const handleEditCommitment = useCallback(() => {
-    if (commitment) {
-      setDraftDim(commitment.dimension);
-      setDraftText(commitment.text);
-    } else {
-      setDraftDim(null);
-      setDraftText("");
-    }
-    setMode("commit");
-  }, [commitment]);
-
-  const handleSubmitCommitment = useCallback(() => {
-    if (draftDim == null) return;
-    const text = draftText.trim();
+  // Witness affordance — called on debounced typing pause OR on textarea
+  // blur. Persists presence to state (which auto-saves to localStorage) and
+  // flips the phase. Idempotent: safe if called multiple times.
+  const witnessNow = useCallback((rawText: string) => {
+    const text = rawText.trim();
     if (!text) return;
-    setCommitment({
-      dimension: draftDim,
-      text: text.slice(0, COMMITMENT_MAX_LEN),
-      createdAt: new Date().toISOString(),
-    });
+    setPresence({ text: text.slice(0, PRESENCE_MAX_LEN), at: new Date().toISOString() });
+    setPresencePhase("witnessed");
+  }, []);
+
+  const handlePresenceChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const v = e.target.value;
+      setPresenceDraft(v);
+      if (witnessTimerRef.current != null) {
+        window.clearTimeout(witnessTimerRef.current);
+        witnessTimerRef.current = null;
+      }
+      const trimmed = v.trim();
+      if (trimmed) {
+        witnessTimerRef.current = window.setTimeout(() => {
+          witnessNow(trimmed);
+        }, WITNESS_DEBOUNCE_MS);
+      }
+    },
+    [witnessNow]
+  );
+
+  const handlePresenceBlur = useCallback(() => {
+    if (witnessTimerRef.current != null) {
+      window.clearTimeout(witnessTimerRef.current);
+      witnessTimerRef.current = null;
+    }
+    witnessNow(presenceDraft);
+  }, [presenceDraft, witnessNow]);
+
+  const handleFinalize = useCallback(() => {
+    const trimmedCommit = commitDraft.trim();
+    if (trimmedCommit) {
+      setCommitment({
+        text: trimmedCommit.slice(0, COMMITMENT_MAX_LEN),
+        at: new Date().toISOString(),
+      });
+    } else {
+      setCommitment(null);
+    }
     setMode("done");
-  }, [draftDim, draftText]);
+  }, [commitDraft]);
 
   const isEval = mode === "eval";
   const isRunning = mode === "running";
   const isReflect = mode === "reflect";
-  const isCommit = mode === "commit";
+  const isPresence = mode === "presence";
   const isDone = mode === "done";
   // Keep the extended viewBox + ground line through everything past eval so
   // the wheel rests on the same ground it just rolled across — no layout snap.
   const showGround = !isEval;
   const vbox = showGround ? VBOX_RUN : VBOX_EVAL;
   const rotation = isRunning ? progress * RUN_TOTAL_ROTATION_DEG : 0;
-  // In reflect/commit/done, rotation is 0 (= 720 mod 360, same final
+  // In reflect/presence/done, rotation is 0 (= 720 mod 360, same final
   // orientation), so computeBob gives the same resting offset the wheel had
   // at end-of-ride — no upward jolt at running→reflect transition.
   const bob = showGround ? computeBob(rotation, scores) : 0;
@@ -332,8 +408,8 @@ export default function Home() {
     ? ((rotation * GROUND_PER_DEG) % TICK_SPACING + TICK_SPACING) % TICK_SPACING
     : 0;
 
-  // Pulse only fires in reflect; once the user moves to commit/done, the form
-  // is the focus, so the disturbance cue stops to avoid distraction.
+  // Pulse only fires in reflect; once the user moves to presence/done, the
+  // form is the focus, so the disturbance cue stops to avoid distraction.
   const minScore = scores.reduce((a, b) => (b < a ? b : a), MAX_SCORE);
   const lowestSet = isReflect
     ? new Set(scores.map((s, i) => (s === minScore ? i : -1)).filter((i) => i >= 0))
@@ -404,7 +480,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Right: sliders / running / reflect / commit / done */}
+        {/* Right: sliders / running / reflect / presence / done */}
         <section className="w-full md:w-1/2">
           {isEval ? (
             <>
@@ -492,10 +568,10 @@ export default function Home() {
               >
                 <button
                   type="button"
-                  onClick={handleEnterCommitFresh}
+                  onClick={handleEnterPresence}
                   className="rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
                 >
-                  写下我的承诺 →
+                  停下来 →
                 </button>
                 <button
                   type="button"
@@ -513,130 +589,114 @@ export default function Home() {
                 </button>
               </div>
             </div>
-          ) : isCommit ? (
-            <div className="flex flex-col gap-6 pt-2">
-              <h1 className="text-2xl font-medium leading-snug tracking-tight text-zinc-900 md:text-3xl">
-                下周我想先照顾哪一格，做哪一件小事？
-              </h1>
-
-              <div>
-                <label className="mb-3 block text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  先选一格
-                </label>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {DIMENSIONS.map((dim, i) => {
-                    const selected = draftDim === i;
-                    return (
-                      <button
-                        key={dim.name}
-                        type="button"
-                        onClick={() => setDraftDim(i)}
-                        aria-pressed={selected}
-                        className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
-                          selected
-                            ? "border-zinc-900 bg-white text-zinc-900"
-                            : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
-                        }`}
-                      >
-                        <span
-                          className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: dim.color }}
-                          aria-hidden
-                        />
-                        <span className="truncate">{dim.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="commit-text"
-                  className="mb-3 block text-xs font-medium uppercase tracking-wide text-zinc-500"
-                >
-                  下周做哪件小事
-                </label>
-                <input
-                  id="commit-text"
-                  type="text"
-                  value={draftText}
-                  onChange={(e) => setDraftText(e.target.value)}
-                  placeholder="比如：跟伴侣安静吃顿饭"
-                  maxLength={COMMITMENT_MAX_LEN}
-                  className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2.5 text-base text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
-                />
-              </div>
-
-              <p className="text-xs text-zinc-400">只写给自己看，不发给任何人。</p>
-
-              <div className="flex flex-col gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={handleSubmitCommitment}
-                  disabled={draftDim == null || !draftText.trim()}
-                  className={`rounded-full px-6 py-3 text-base font-medium transition-colors ${
-                    draftDim != null && draftText.trim()
-                      ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800"
-                      : "cursor-not-allowed bg-zinc-200 text-zinc-400"
-                  }`}
-                >
-                  记下来 →
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("reflect")}
-                  className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
-                >
-                  回去看车
-                </button>
-              </div>
-            </div>
-          ) : isDone && commitment ? (
-            <div className="flex flex-col gap-6 pt-2">
-              <h1
-                className="fade-rise text-2xl font-medium leading-snug tracking-tight text-zinc-900 md:text-3xl"
-                style={{ animationDelay: "0.2s" }}
-              >
-                记下了。
-              </h1>
-
-              <div
-                className="fade-rise rounded-lg border border-zinc-200 bg-white p-5"
-                style={{ animationDelay: "0.6s" }}
-              >
-                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  下周我想先照顾
-                </p>
-                <p className="mt-2 flex items-center gap-2 text-base text-zinc-900">
-                  <span
-                    className="inline-block h-3 w-3 rounded-full"
-                    style={{ backgroundColor: DIMENSIONS[commitment.dimension].color }}
-                    aria-hidden
+          ) : isPresence ? (
+            <div className="flex flex-col gap-8 pt-2">
+              {/* Phase A — input. Prompt + textarea, no CTA. The user types
+                   freely; debounce or blur triggers the witness flip. */}
+              {presencePhase === "input" ? (
+                <>
+                  <p className="text-2xl font-medium leading-snug tracking-tight text-zinc-700 md:text-3xl">
+                    看着这辆车，我此刻感觉到——
+                  </p>
+                  <textarea
+                    value={presenceDraft}
+                    onChange={handlePresenceChange}
+                    onBlur={handlePresenceBlur}
+                    autoFocus
+                    rows={4}
+                    maxLength={PRESENCE_MAX_LEN}
+                    className="w-full resize-none border-none bg-transparent p-0 text-2xl font-light leading-relaxed text-zinc-900 placeholder:text-zinc-300 focus:outline-none md:text-3xl"
+                    aria-label="我此刻感觉到"
                   />
-                  <span className="font-medium">
-                    {DIMENSIONS[commitment.dimension].name}
-                  </span>
+                </>
+              ) : (
+                <>
+                  {/* Phase B — witnessed. The text "lifts" into a quiet,
+                       larger statement; below it the optional commit and
+                       the final CTA fade in after a beat. */}
+                  <p className="witness text-2xl font-medium leading-relaxed tracking-tight text-zinc-900 md:text-3xl">
+                    {presence?.text ?? presenceDraft}
+                  </p>
+
+                  <div
+                    className="fade-rise flex flex-col gap-3"
+                    style={{ animationDelay: "1.2s" }}
+                  >
+                    <label
+                      htmlFor="commit-text"
+                      className="text-sm leading-relaxed text-zinc-500"
+                    >
+                      如果你愿意，再写一行你想做的事。
+                    </label>
+                    <input
+                      id="commit-text"
+                      type="text"
+                      value={commitDraft}
+                      onChange={(e) => setCommitDraft(e.target.value)}
+                      placeholder=""
+                      maxLength={COMMITMENT_MAX_LEN}
+                      className="w-full border-b border-zinc-200 bg-transparent py-2 text-base text-zinc-900 placeholder:text-zinc-300 focus:border-zinc-900 focus:outline-none"
+                    />
+                  </div>
+
+                  <div
+                    className="fade-rise flex flex-col gap-3 pt-2"
+                    style={{ animationDelay: "2.0s" }}
+                  >
+                    <button
+                      type="button"
+                      onClick={handleFinalize}
+                      className="rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+                    >
+                      去看留印卡片 →
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleBack}
+                      className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
+                    >
+                      回去调整车轮
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : isDone && presence ? (
+            <div className="flex flex-col gap-6 pt-2">
+              <div className="fade-rise" style={{ animationDelay: "0.2s" }}>
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  我此刻感觉到
                 </p>
-                <p className="mt-3 text-base leading-relaxed text-zinc-900">
-                  {commitment.text}
-                </p>
-                <p className="mt-5 text-xs text-zinc-400">
-                  想分享，可以截屏发给在乎的人。
+                <p className="mt-3 text-2xl font-medium leading-relaxed tracking-tight text-zinc-900 md:text-3xl">
+                  {presence.text}
                 </p>
               </div>
+
+              {commitment && (
+                <div
+                  className="fade-rise border-t border-zinc-200 pt-5"
+                  style={{ animationDelay: "0.7s" }}
+                >
+                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    我想做的事
+                  </p>
+                  <p className="mt-2 text-base leading-relaxed text-zinc-700">
+                    {commitment.text}
+                  </p>
+                </div>
+              )}
+
+              <p
+                className="fade-rise text-xs text-zinc-400"
+                style={{ animationDelay: "1.0s" }}
+              >
+                想分享，可以截屏发给在乎的人。
+              </p>
 
               <div
                 className="fade-rise flex flex-col gap-3 pt-2"
-                style={{ animationDelay: "1.0s" }}
+                style={{ animationDelay: "1.2s" }}
               >
-                <button
-                  type="button"
-                  onClick={handleEditCommitment}
-                  className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
-                >
-                  改一下我的承诺
-                </button>
                 <button
                   type="button"
                   onClick={handleBack}
