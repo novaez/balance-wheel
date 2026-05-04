@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Ma_Shan_Zheng, Caveat } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -10,6 +10,21 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Ma Shan Zheng covers CJK (Chinese handwriting); Caveat handles Latin in
+// the same warm register. Both load via next/font, self-hosted at build.
+const maShanZheng = Ma_Shan_Zheng({
+  variable: "--font-zh-hand",
+  weight: "400",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const caveat = Caveat({
+  variable: "--font-en-hand",
+  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -25,7 +40,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${maShanZheng.variable} ${caveat.variable} h-full antialiased`}
     >
       <body className="min-h-full">{children}</body>
     </html>

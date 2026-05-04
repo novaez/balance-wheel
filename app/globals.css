@@ -102,3 +102,15 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   opacity: 0;
   animation: witness 1.2s ease-out forwards;
 }
+
+/* Stage 6 — handwriting families for the card. The card breaks the rest of
+   the UI's clinical sans for warmth (design principle 7: card is the only
+   emotional outlet). Ma Shan Zheng renders CJK; Caveat handles Latin so a
+   mixed string still reads as one voice. */
+.font-zh-hand {
+  font-family: var(--font-zh-hand), var(--font-en-hand), "STKaiti", "KaiTi",
+    cursive;
+}
+.font-en-hand {
+  font-family: var(--font-en-hand), var(--font-zh-hand), cursive;
+}

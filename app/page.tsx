@@ -20,6 +20,7 @@ const MIN_SCORE = 1;
 const MAX_SCORE = 10;
 const PRESENCE_MAX_LEN = 240;
 const COMMITMENT_MAX_LEN = 80;
+const CAPTION_MAX_LEN = 80;
 
 type Scores = number[]; // length 8, each 1..10 integer
 type Presence = { text: string; at: string };
@@ -33,19 +34,32 @@ type StoredState = {
   scores: Scores;
   presence: Presence | null;
   commitment: Commitment | null;
+  caption: string;
 };
 
 function loadState(): StoredState {
   if (typeof window === "undefined") {
-    return { scores: defaultScores(), presence: null, commitment: null };
+    return {
+      scores: defaultScores(),
+      presence: null,
+      commitment: null,
+      caption: "",
+    };
   }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { scores: defaultScores(), presence: null, commitment: null };
+    if (!raw)
+      return {
+        scores: defaultScores(),
+        presence: null,
+        commitment: null,
+        caption: "",
+      };
     const parsed = JSON.parse(raw) as {
       scores?: unknown;
       presence?: unknown;
       commitment?: unknown;
+      caption?: unknown;
     };
     // Scores
     let scores: Scores;
@@ -86,16 +100,27 @@ function loadState(): StoredState {
           : new Date().toISOString();
       if (text) commitment = { text: text.slice(0, COMMITMENT_MAX_LEN), at };
     }
-    return { scores, presence, commitment };
+    // Caption (v3 field). Old data without it loads as empty string.
+    const caption =
+      typeof parsed.caption === "string"
+        ? parsed.caption.slice(0, CAPTION_MAX_LEN)
+        : "";
+    return { scores, presence, commitment, caption };
   } catch {
-    return { scores: defaultScores(), presence: null, commitment: null };
+    return {
+      scores: defaultScores(),
+      presence: null,
+      commitment: null,
+      caption: "",
+    };
   }
 }
 
 function saveState(
   scores: Scores,
   presence: Presence | null,
-  commitment: Commitment | null
+  commitment: Commitment | null,
+  caption: string
 ) {
   if (typeof window === "undefined") return;
   try {
@@ -105,6 +130,7 @@ function saveState(
         scores,
         presence,
         commitment,
+        caption,
         updatedAt: new Date().toISOString(),
       })
     );
@@ -233,6 +259,10 @@ export default function Home() {
   const [scores, setScores] = useState<Scores>(defaultScores);
   const [presence, setPresence] = useState<Presence | null>(null);
   const [commitment, setCommitment] = useState<Commitment | null>(null);
+  // Stage 6 — caption is the user-editable line on the souvenir card. Lives
+  // alongside presence/commit in localStorage but is reset on each new
+  // presence cycle so each lap around the arc gets a fresh card line.
+  const [caption, setCaption] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [mode, setMode] = useState<Mode>("eval");
   const [progress, setProgress] = useState(0);
@@ -251,6 +281,7 @@ export default function Home() {
     setScores(s.scores);
     setPresence(s.presence);
     setCommitment(s.commitment);
+    setCaption(s.caption);
     setHydrated(true);
   }, []);
 
@@ -264,6 +295,7 @@ export default function Home() {
         setScores(s.scores);
         setPresence(s.presence);
         setCommitment(s.commitment);
+        setCaption(s.caption);
       }
     };
     window.addEventListener("pageshow", onPageShow);
@@ -273,8 +305,8 @@ export default function Home() {
   // Persist whenever any persisted field changes, but only after hydration.
   useEffect(() => {
     if (!hydrated) return;
-    saveState(scores, presence, commitment);
-  }, [scores, presence, commitment, hydrated]);
+    saveState(scores, presence, commitment, caption);
+  }, [scores, presence, commitment, caption, hydrated]);
 
   // Drive a single 5-second ride; rAF self-stops at progress=1 so the wheel
   // rests at its final pose, then auto-advances to the reflect stage so the
@@ -327,6 +359,9 @@ export default function Home() {
     setPresenceDraft("");
     setCommitDraft("");
     setPresencePhase("input");
+    // Each new lap through presence gets a blank caption — the card line is
+    // bound to the freshly-witnessed presence text, not carried over.
+    setCaption("");
     setMode("presence");
   }, []);
 
@@ -370,6 +405,9 @@ export default function Home() {
       setCommitment(null);
     }
     setMode("done");
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }, [commitDraft]);
 
   const isEval = mode === "eval";
@@ -396,6 +434,111 @@ export default function Home() {
   const lowestSet = isReflect
     ? new Set(scores.map((s, i) => (s === minScore ? i : -1)).filter((i) => i >= 0))
     : null;
+
+  if (isDone && presence) {
+    return (
+      <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
+        <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-6 px-6 py-12">
+          {/* Souvenir card — the only emotional outlet of the UI (圆桌 #1 #7).
+              Single warm artifact: wheel snapshot + handwritten presence + soft
+              commit + user-owned caption + watermark. Designed to be screenshot-
+              shared as-is; no download / share APIs (privacy-first). */}
+          <article
+            className="fade-rise relative w-full overflow-hidden rounded-2xl border border-zinc-200 bg-gradient-to-br from-amber-50/40 via-white to-white px-7 py-9 shadow-md"
+            style={{ animationDelay: "0.1s" }}
+            aria-label="留印卡片"
+          >
+            <div className="flex flex-col items-center gap-6">
+              {/* Mini wheel — clean snapshot, no ground / labels / bob. */}
+              <svg
+                viewBox={`${-MAX_RADIUS - VBOX_PAD} ${-MAX_RADIUS - VBOX_PAD} ${
+                  (MAX_RADIUS + VBOX_PAD) * 2
+                } ${(MAX_RADIUS + VBOX_PAD) * 2}`}
+                className="h-auto w-full max-w-[200px]"
+                role="img"
+                aria-label="平衡轮快照"
+              >
+                <circle
+                  cx={0}
+                  cy={0}
+                  r={MAX_RADIUS}
+                  fill="none"
+                  stroke="#e4e4e7"
+                  strokeWidth={1}
+                  strokeDasharray="2 4"
+                />
+                {DIMENSIONS.map((dim, i) => (
+                  <path
+                    key={dim.name}
+                    d={sectorPath(i, scores[i] ?? DEFAULT_SCORE)}
+                    fill={dim.color}
+                    stroke="#ffffff"
+                    strokeWidth={1.5}
+                    strokeLinejoin="round"
+                  />
+                ))}
+                <circle cx={0} cy={0} r={2.5} fill="#27272a" />
+              </svg>
+
+              {/* Presence — main voice, handwritten, large. */}
+              <p className="font-zh-hand text-center text-3xl leading-snug text-zinc-900 md:text-4xl">
+                {presence.text}
+              </p>
+
+              {/* Commitment — optional, sits under presence as a soft echo. */}
+              {commitment && (
+                <p className="font-zh-hand text-center text-xl leading-relaxed text-zinc-500 md:text-2xl">
+                  — {commitment.text}
+                </p>
+              )}
+
+              {/* Caption — user writes their own line. The empty input itself
+                  is the invitation; on screenshot, only the typed text shows. */}
+              <div className="w-full border-t border-dashed border-zinc-200 pt-5">
+                <input
+                  type="text"
+                  value={caption}
+                  onChange={(e) =>
+                    setCaption(e.target.value.slice(0, CAPTION_MAX_LEN))
+                  }
+                  onBlur={() => {
+                    // Mobile soft-keyboard dismiss leaves the page scrolled
+                    // past the card; pull viewport back to the top after the
+                    // keyboard collapse animation settles.
+                    if (typeof window !== "undefined") {
+                      setTimeout(() => {
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }, 100);
+                    }
+                  }}
+                  placeholder="给自己写一句话…"
+                  maxLength={CAPTION_MAX_LEN}
+                  className="font-zh-hand w-full bg-transparent text-center text-xl leading-relaxed text-zinc-700 placeholder:text-zinc-300 focus:outline-none md:text-2xl"
+                  aria-label="给自己写一句话"
+                />
+              </div>
+
+              {/* Watermark — virality hook. Latin handwriting echoes the
+                  Chinese script above; subtle but unmistakable. */}
+              <p className="font-en-hand mt-1 text-sm tracking-wide text-zinc-400">
+                balance-wheel
+              </p>
+            </div>
+          </article>
+
+          <p className="text-xs text-zinc-400">想分享，可以截屏发给在乎的人。</p>
+
+          <button
+            type="button"
+            onClick={handleBack}
+            className="text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
+          >
+            回去调整车轮
+          </button>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
@@ -688,51 +831,6 @@ export default function Home() {
                   </div>
                 </>
               )}
-            </div>
-          ) : isDone && presence ? (
-            <div className="flex flex-col gap-6 pt-2">
-              <div className="fade-rise" style={{ animationDelay: "0.2s" }}>
-                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  我此刻感觉到
-                </p>
-                <p className="mt-3 text-2xl font-medium leading-relaxed tracking-tight text-zinc-900 md:text-3xl">
-                  {presence.text}
-                </p>
-              </div>
-
-              {commitment && (
-                <div
-                  className="fade-rise border-t border-zinc-200 pt-5"
-                  style={{ animationDelay: "0.7s" }}
-                >
-                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                    我想做的事
-                  </p>
-                  <p className="mt-2 text-base leading-relaxed text-zinc-700">
-                    {commitment.text}
-                  </p>
-                </div>
-              )}
-
-              <p
-                className="fade-rise text-xs text-zinc-400"
-                style={{ animationDelay: "1.0s" }}
-              >
-                想分享，可以截屏发给在乎的人。
-              </p>
-
-              <div
-                className="fade-rise flex flex-col gap-3 pt-2"
-                style={{ animationDelay: "1.2s" }}
-              >
-                <button
-                  type="button"
-                  onClick={handleBack}
-                  className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
-                >
-                  回去调整车轮
-                </button>
-              </div>
             </div>
           ) : null}
         </section>
