@@ -1218,13 +1218,13 @@ export default function Home() {
                       d={outlinePath}
                       fill="none"
                       stroke="#27272a"
-                      strokeWidth={1.5}
+                      strokeWidth={2.2}
                       strokeLinejoin="round"
                       strokeLinecap="round"
                       className={
                         evalPhase === "connect" ? "outline-connect" : undefined
                       }
-                      opacity={evalPhase === "connect" ? 1 : 0.5}
+                      opacity={evalPhase === "connect" ? 1 : 0.9}
                       style={{ transition: "opacity 0.4s" }}
                     />
                   )}
