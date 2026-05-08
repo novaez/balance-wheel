@@ -813,6 +813,36 @@ export default function Home() {
     ? ((rotation * GROUND_PER_DEG) % TICK_SPACING + TICK_SPACING) % TICK_SPACING
     : 0;
 
+  // Phase 1.5t — wheel 经过 obstacle 时上下跟随 + 放大. obstaclesData /
+  // groundCurveDeviation 提到 component scope 让 wheel transform 和 ground
+  // render block 都能 reuse. wheel center SVG x = 0; obstacle x in SVG =
+  // 0 + atProgress - groundProgressAbs.
+  const groundProgressAbs = isRunning ? rotation * GROUND_PER_DEG : 0;
+  const obstaclesData: {
+    atProgress: number;
+    type: "bump" | "pit";
+    radius: number;
+    height: number;
+  }[] = [
+    { atProgress: 250, type: "bump", radius: 18, height: 10 },
+    { atProgress: 750, type: "pit", radius: 15, height: 8 },
+    { atProgress: 1250, type: "bump", radius: 17, height: 9 },
+  ];
+  const groundCurveDeviation = (x: number) => {
+    let dy = 0;
+    for (const o of obstaclesData) {
+      const obstacleX = o.atProgress - groundProgressAbs;
+      const dx = x - obstacleX;
+      if (Math.abs(dx) > o.radius) continue;
+      const t = dx / o.radius;
+      const bell = Math.cos((t * Math.PI) / 2) ** 2;
+      dy += (o.type === "bump" ? -1 : 1) * o.height * bell;
+    }
+    return dy;
+  };
+  // 2.0× 放大让 wheel 颠簸幅度比 ground 起伏更夸张 (物理上不真实但视觉更"颠").
+  const obstacleBob = showGround ? groundCurveDeviation(0) * 2.0 : 0;
+
   // Phase 1.5l — pulse 取消 (liushu 拍). visual disturbance 完全靠 ground line
   // 起伏 (Phase 1.5k A 路面颠簸) 表达 "路途平坦还是颠簸". sector 不再闪烁.
 
@@ -1059,7 +1089,7 @@ export default function Home() {
               {/* Outline + labels — geometric annotations of the wheel,
                   share the bob translate so they sink with the wheel; both
                   stay outside the rotate group so running doesn't spin them. */}
-              <g transform={`translate(0 ${bob.toFixed(3)})`}>
+              <g transform={`translate(0 ${(bob + obstacleBob).toFixed(3)})`}>
                 {outlineCircle()}
                 {!isRunning &&
                   DIMENSIONS.map((dim, i) => {
@@ -1090,7 +1120,7 @@ export default function Home() {
                   })}
               </g>
 
-              <g transform={`translate(0 ${bob.toFixed(3)})`}>
+              <g transform={`translate(0 ${(bob + obstacleBob).toFixed(3)})`}>
                 <g transform={`rotate(${rotation.toFixed(3)})`}>
                   {/* Phase 1.5g — 框架 vs 填色分层（奋笔疾书 hatching D'）
                       ====================================================
@@ -1262,35 +1292,10 @@ export default function Home() {
               )}
 
               {showGround && (() => {
-                // Phase 1.5r — obstacles 不循环, 整个 5s 滚程总共 3 个缓坡.
-                // liushu: "整个滚动区间内只有 3 个障碍" + "地面滚速比 wheel 快"
-                // → GROUND_PER_DEG 2.5→1.8 让 ground 跟 wheel 视觉协调.
-                // obstacles 用 absolute progress (不 mod), 起始在 viewport 右
-                // 边外, 滚动时进入 → 经过 wheel center → 离开左边. 5s 总
-                // progress = 720 * 1.8 = 1296 svg units, 3 个 obstacles 在
-                // 250/750/1250 evenly spaced.
-                const groundProgressAbs = isRunning
-                  ? rotation * GROUND_PER_DEG
-                  : 0;
-                const wheelCenterX = vbox.x + vbox.w / 2;
-                const obstacles = [
-                  { atProgress: 250, type: "bump", radius: 18, height: 10 },
-                  { atProgress: 750, type: "pit", radius: 15, height: 8 },
-                  { atProgress: 1250, type: "bump", radius: 17, height: 9 },
-                ];
-                const groundCurveY = (x: number) => {
-                  let dy = 0;
-                  for (const o of obstacles) {
-                    const obstacleX =
-                      wheelCenterX + o.atProgress - groundProgressAbs;
-                    const dx = x - obstacleX;
-                    if (Math.abs(dx) > o.radius) continue;
-                    const t = dx / o.radius;
-                    const bell = Math.cos((t * Math.PI) / 2) ** 2;
-                    dy += (o.type === "bump" ? -1 : 1) * o.height * bell;
-                  }
-                  return GROUND_Y + dy;
-                };
+                // Phase 1.5t — ground render reuse component-scope
+                // obstaclesData + groundCurveDeviation (用于 wheel obstacleBob).
+                const groundCurveY = (x: number) =>
+                  GROUND_Y + groundCurveDeviation(x);
                 const groundX0 = vbox.x + 4;
                 const groundXEnd = vbox.x + vbox.w - 4;
                 const samples = 80;
