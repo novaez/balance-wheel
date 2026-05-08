@@ -4,14 +4,16 @@ import { useEffect, useState, useCallback, useRef } from "react";
 
 // 8 dimensions, clockwise starting from 12 o'clock.
 const DIMENSIONS = [
-  { name: "家庭/朋友", color: "#ef4444" }, // red-500
-  { name: "另一半/爱情", color: "#f97316" }, // orange-500
-  { name: "娱乐与休闲", color: "#f59e0b" }, // amber-500
-  { name: "健康", color: "#22c55e" }, // green-500
-  { name: "财富", color: "#06b6d4" }, // cyan-500
-  { name: "个人成长", color: "#3b82f6" }, // blue-500
-  { name: "环境", color: "#a855f7" }, // purple-500
-  { name: "职业", color: "#ec4899" }, // pink-500
+  // Phase 1.5j — palette C "warm/cool 交替" (1 暖 1 冷律动)
+  // 邻接色对比最强; 维度↔颜色语义改动 liushu 已知拍板.
+  { name: "家庭/朋友", color: "#ef4444" }, // 红 (暖)
+  { name: "另一半/爱情", color: "#06b6d4" }, // 青 (冷)
+  { name: "娱乐与休闲", color: "#f59e0b" }, // 琥珀 (暖)
+  { name: "健康", color: "#3b82f6" }, // 蓝 (冷)
+  { name: "财富", color: "#ec4899" }, // 粉 (暖)
+  { name: "个人成长", color: "#10b981" }, // 翠绿 (冷)
+  { name: "环境", color: "#f97316" }, // 橘 (暖)
+  { name: "职业", color: "#a855f7" }, // 紫 (冷)
 ] as const;
 
 const STORAGE_KEY = "wheel-of-life-current";
@@ -1150,6 +1152,28 @@ export default function Home() {
                           strokeLinejoin="round"
                         />
                       </g>
+                    );
+                  })}
+
+                  {/* Phase 1.5j fix #2 — touched + score=0 时的 dot marker。
+                      score>0 已有 hatching fill 作 visual presence，无需 dot;
+                      score=0 时扇区无几何 (sectorRadius(0)=0, 保留"圆心 = 0"
+                      honest 语义), dot 是独立 marker 让 user 区分"画过 0 分"
+                      vs "没画过". 位置: sector 中心方向 r=8, dot r=4. */}
+                  {DIMENSIONS.map((dim, i) => {
+                    if (!touched[i]) return null;
+                    if (displayScores[i] !== 0) return null;
+                    const angle = -90 + i * SECTOR_DEG + SECTOR_DEG / 2;
+                    const rad = (angle * Math.PI) / 180;
+                    const r = 8;
+                    return (
+                      <circle
+                        key={`zero-dot-${i}`}
+                        cx={Math.cos(rad) * r}
+                        cy={Math.sin(rad) * r}
+                        r={4}
+                        fill={dim.color}
+                      />
                     );
                   })}
 
