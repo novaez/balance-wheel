@@ -722,8 +722,11 @@ export default function Home() {
 
   const handleBack = useCallback(() => {
     setMode("eval");
-    setEvalPhase("input");
-    setTouched(DIMENSIONS.map(() => false));
+    // Phase 1.5n — 不再 reset touched / scores. user "回去调整"时保留之前
+    // 分数, 想调哪个再 press 哪个 (1.5d fix #5 加的 reveal 中断 logic 让
+    // press 任意阶段都能进 input + preview + commit 后重新 reveal).
+    // evalPhase 直接进 "ready": user 看到完整 wheel + "再跑一程" 按钮.
+    setEvalPhase("ready");
     setPressing(null);
     setProgress(0);
   }, []);
