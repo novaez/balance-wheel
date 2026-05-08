@@ -2,7 +2,7 @@
 
 一个让任何人花 3-5 分钟自评人生这辆车的网页小工具。8 个维度评分变成自行车两轮上的色扇——平衡时圆滚滚一帆风顺，失衡时颠簸疲惫。
 
-> 早期开发名为"平衡轮"，2026-05-07 跟随交互范式 1st person 转向一并改名为"生命之轮"。GitHub repo / 部署域名仍为 `balance-wheel` (rename 待主对话拍板)。
+> 早期开发名为"平衡轮"，2026-05-07 跟随交互范式 1st person 转向一并改名为"生命之轮"。包名 / 部署 worker name 已切到 `wheel-of-life`；GitHub repo rename 在 GUI 完成后 30 天内旧 URL 自动 redirect。
 
 ## 设计理念
 

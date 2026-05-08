@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "balance-wheel",
+  "name": "wheel-of-life",
   "compatibility_date": "2026-05-04",
   "assets": {
     "directory": "./out",

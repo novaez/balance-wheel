@@ -14,7 +14,11 @@ const DIMENSIONS = [
   { name: "职业", color: "#ec4899" }, // pink-500
 ] as const;
 
-const STORAGE_KEY = "balance-wheel-current";
+const STORAGE_KEY = "wheel-of-life-current";
+// 2026-05-08 改名（balance-wheel → wheel-of-life）后保留向后读，让早期用户的
+// localStorage 数据不丢；下次 saveState 自然落到新 key 上，老 key 留作 stale
+// 不主动清理（用户清浏览器数据时一并清掉即可）。
+const LEGACY_STORAGE_KEY = "balance-wheel-current";
 const DEFAULT_SCORE = 0;
 // 1st person 改造：圆心 = 0、外缘 = 10。Phase 1 曾把下限设到 1（避免滑块滑到底
 // 整块色扇消失带来的"我的健康一无所有"误读）；Phase 1.5 因为顶部 framing 已
@@ -51,7 +55,9 @@ function loadState(): StoredState {
     };
   }
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw =
+      window.localStorage.getItem(STORAGE_KEY) ??
+      window.localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw)
       return {
         scores: defaultScores(),
