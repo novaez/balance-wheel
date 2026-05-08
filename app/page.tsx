@@ -1261,74 +1261,77 @@ export default function Home() {
                 />
               )}
 
-              {showGround && (
-                <g>
-                  {/* Phase 1.5p — ground line 恢复直线; 颠簸主体回到 running 阶段
-                      wheel 自身不规则 (computeBob). 加 ground obstacles (小石子 +
-                      小沟) 视觉提示"路面不平整, 象征不平整的人生之路", 配合 wheel
-                      bob 让滚动时颠簸感更真实. */}
-                  <line
-                    x1={vbox.x + 4}
-                    y1={GROUND_Y}
-                    x2={vbox.x + vbox.w - 4}
-                    y2={GROUND_Y}
-                    stroke="#a1a1aa"
-                    strokeWidth={1}
-                  />
-                  {/* obstacles (静态 array, groundOffset 滚动 + wrap-around) */}
-                  {(() => {
-                    const loop = TICK_SPACING * TICK_COUNT;
-                    const obstacles = [
-                      { offset: 55, type: "bump", size: 2.5 },
-                      { offset: 130, type: "pit", size: 3 },
-                      { offset: 205, type: "bump", size: 3.5 },
-                      { offset: 270, type: "bump", size: 2 },
-                      { offset: 340, type: "pit", size: 2.5 },
-                      { offset: 395, type: "bump", size: 3 },
+              {showGround && (() => {
+                // Phase 1.5q — ground "缓坡" 替代 1.5p 石子+沟 装饰.
+                // liushu: "应该做成小坡, 石子不明显, 让地面直线在有坡的地方
+                // 变成曲线". 3 个 obstacles (1 凸坡 + 1 凹坡 + 1 凸坡), ground
+                // line 用 polyline, y 在坡范围内按 cos 平滑弯曲, 其它地方直线.
+                // ticks 的 y 也跟 ground curve, 视觉一体.
+                const loop = TICK_SPACING * TICK_COUNT;
+                const obstacles = [
+                  { offset: 90, type: "bump", radius: 22, height: 5 },
+                  { offset: 230, type: "pit", radius: 18, height: 4 },
+                  { offset: 360, type: "bump", radius: 20, height: 4 },
+                ];
+                const groundCurveY = (xRel: number) => {
+                  // xRel: relative x within wrapped loop
+                  let dy = 0;
+                  for (const o of obstacles) {
+                    const wrapped =
+                      (((o.offset - groundOffset) % loop) + loop) % loop;
+                    // 考虑 wrap-around: obstacle 可能在 viewport 内有 0 或 1 份
+                    // 影响; 取最近的 dx (含 wrap).
+                    const candidates = [
+                      xRel - wrapped,
+                      xRel - wrapped - loop,
+                      xRel - wrapped + loop,
                     ];
-                    return obstacles.map((o, idx) => {
-                      const wrapped =
-                        (((o.offset - groundOffset) % loop) + loop) % loop;
-                      const x = vbox.x + 4 + wrapped;
-                      if (o.type === "bump") {
-                        return (
-                          <circle
-                            key={`obstacle-${idx}`}
-                            cx={x}
-                            cy={GROUND_Y - o.size * 0.6}
-                            r={o.size}
-                            fill="#a1a1aa"
-                          />
-                        );
-                      }
-                      // pit: 凹陷的半圆 (white fill 截断 ground line)
+                    const dx = candidates.reduce((a, b) =>
+                      Math.abs(a) < Math.abs(b) ? a : b
+                    );
+                    if (Math.abs(dx) > o.radius) continue;
+                    const t = dx / o.radius; // -1 .. 1
+                    const bell = Math.cos((t * Math.PI) / 2) ** 2;
+                    dy += (o.type === "bump" ? -1 : 1) * o.height * bell;
+                  }
+                  return GROUND_Y + dy;
+                };
+                const groundX0 = vbox.x + 4;
+                const groundXEnd = vbox.x + vbox.w - 4;
+                const samples = 80;
+                const points = Array.from({ length: samples + 1 }, (_, i) => {
+                  const x =
+                    groundX0 + ((groundXEnd - groundX0) * i) / samples;
+                  const xRel = x - groundX0;
+                  return `${x.toFixed(2)},${groundCurveY(xRel).toFixed(2)}`;
+                });
+                return (
+                  <g>
+                    <polyline
+                      points={points.join(" ")}
+                      stroke="#a1a1aa"
+                      strokeWidth={1}
+                      fill="none"
+                    />
+                    {Array.from({ length: TICK_COUNT }, (_, i) => {
+                      const x = vbox.x + 4 + i * TICK_SPACING - groundOffset;
+                      const xRel = x - groundX0;
+                      const yBase = groundCurveY(xRel);
                       return (
-                        <path
-                          key={`obstacle-${idx}`}
-                          d={`M ${x - o.size} ${GROUND_Y} A ${o.size} ${o.size * 0.7} 0 0 0 ${x + o.size} ${GROUND_Y} Z`}
-                          fill="#ffffff"
-                          stroke="#a1a1aa"
+                        <line
+                          key={i}
+                          x1={x}
+                          y1={yBase + 2}
+                          x2={x - 8}
+                          y2={yBase + 12}
+                          stroke="#d4d4d8"
                           strokeWidth={1}
                         />
                       );
-                    });
-                  })()}
-                  {Array.from({ length: TICK_COUNT }, (_, i) => {
-                    const x = vbox.x + 4 + i * TICK_SPACING - groundOffset;
-                    return (
-                      <line
-                        key={i}
-                        x1={x}
-                        y1={GROUND_Y + 2}
-                        x2={x - 8}
-                        y2={GROUND_Y + 12}
-                        stroke="#d4d4d8"
-                        strokeWidth={1}
-                      />
-                    );
-                  })}
-                </g>
-              )}
+                    })}
+                  </g>
+                );
+              })()}
             </svg>
           </div>
         </section>
