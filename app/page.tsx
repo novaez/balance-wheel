@@ -654,17 +654,61 @@ export default function Home() {
     return s;
   });
 
-  // 8 sector tips for the connect-phase outline polygon. 用 sector 中线半径
-  // 取尖 (而不是 sector 的边角) — 视觉上是"把每个方向你伸到了哪连起来"，
-  // 跟纸质 wheel of life "连线" 步骤的语义一致。
-  const polygonPoints = displayScores
-    .map((s, i) => {
-      const r = sectorRadius(s);
-      const angle = -90 + i * SECTOR_DEG + SECTOR_DEG / 2;
-      const rad = (angle * Math.PI) / 180;
-      return `${(Math.cos(rad) * r).toFixed(2)},${(Math.sin(rad) * r).toFixed(2)}`;
-    })
-    .join(" ");
+  // Phase 1.5b — 整轮 outline 沿"扇区外弧"描线，而不是 polygon 直线连 sector
+  // 中线尖端。视觉上是"真车轮的胎面"——8 段圆弧（每段 45°，半径 = 该扇区
+  // 当前 score 对应半径）相连；扇区之间 score 不同时半径不同，用径向短直线
+  // 沿扇区边界连接（即 outline 完全沿真实扇区外缘走）。
+  //
+  // 实现：SVG path，对每个 sector i 用 A (arc) 命令画 45° 弧；扇区交界处用
+  // L (line) 跳到下个扇区的起点半径。score = 0 的扇区半径退化为 0，arc
+  // 走不通——降级为穿过 (0,0) 的两段直线（视觉上 outline "扎进中心"，跟
+  // sectorPath 的 collapse 行为一致）。
+  const outlinePath = (() => {
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const ptOnSector = (sectorIndex: number, deg: number) => {
+      const r = sectorRadius(displayScores[sectorIndex]);
+      return {
+        r,
+        x: Math.cos(toRad(deg)) * r,
+        y: Math.sin(toRad(deg)) * r,
+      };
+    };
+    const segs: string[] = [];
+    // 起点 = sector 0 起始边的外缘点
+    const p0 = ptOnSector(0, -90);
+    if (p0.r > 0) {
+      segs.push(`M ${p0.x.toFixed(3)} ${p0.y.toFixed(3)}`);
+    } else {
+      segs.push(`M 0 0`);
+    }
+    for (let i = 0; i < 8; i++) {
+      const start = -90 + i * SECTOR_DEG;
+      const end = start + SECTOR_DEG;
+      const r = sectorRadius(displayScores[i]);
+      if (r > 0) {
+        // 沿本扇区外弧走 45° (largeArc=0, sweep=1，跟 sectorPath 一致)
+        const p2 = ptOnSector(i, end);
+        segs.push(
+          `A ${r.toFixed(3)} ${r.toFixed(3)} 0 0 1 ${p2.x.toFixed(
+            3
+          )} ${p2.y.toFixed(3)}`
+        );
+      } else {
+        // score = 0 的扇区：绕到中心 (0,0)，等下一段再从中心 L 到下扇区起点
+        segs.push(`L 0 0`);
+      }
+      // 跨扇区边界：L 到下扇区起始边（同一角度 = end，但下扇区半径可能不同）
+      const nextI = (i + 1) % 8;
+      const nextStart = ptOnSector(nextI, end);
+      if (nextStart.r > 0) {
+        segs.push(`L ${nextStart.x.toFixed(3)} ${nextStart.y.toFixed(3)}`);
+      } else {
+        segs.push(`L 0 0`);
+      }
+    }
+    segs.push(`Z`);
+    return segs.join(" ");
+  })();
 
   if (isDone && presence) {
     return (
@@ -879,16 +923,19 @@ export default function Home() {
                     />
                   ))}
 
-                  {/* Phase 1.5 connect 阶段：8 个 sector 尖端的 polygon 连线。
-                      stroke-dasharray 动画从 "全是 gap" 渐变到 "全连"，1.2s 走完。
-                      shape / ready 阶段持续显示静态 polygon。 */}
+                  {/* Phase 1.5b connect 阶段：沿 8 个扇区外弧描整轮 outline。
+                      不再是 polygon 直线连尖端 (会显成八边形)，而是 A (arc)
+                      命令沿真实扇区外缘走——平衡时圆滚滚、失衡时凹凸不平。
+                      stroke-dasharray 动画从 "全是 gap" 渐变到 "全连"，1.2s
+                      走完；shape / ready 阶段持续显示静态 outline。 */}
                   {isEval && evalPhase !== "input" && (
-                    <polygon
-                      points={polygonPoints}
+                    <path
+                      d={outlinePath}
                       fill="none"
                       stroke="#27272a"
                       strokeWidth={1.5}
                       strokeLinejoin="round"
+                      strokeLinecap="round"
                       className={
                         evalPhase === "connect" ? "outline-connect" : undefined
                       }
@@ -971,12 +1018,30 @@ export default function Home() {
                 <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
                   生命之轮
                 </h1>
-                {/* Phase 1.5 — 入口 framing block。12-30 字，圆心-外缘锚点 +
-                    马车隐喻。位置在 H1 之下、操作提示之上；字号比 H1 小、比
-                    操作提示略大；中性色不抢 wheel 视觉。 */}
+                {/* Phase 1.5 — 入口 framing block。22 字 hook 显眼锚 "圆心 = 0
+                    / 外缘 = 10 / 马车隐喻"；详情段落收在 <details> 里默认
+                    收起，遵守原则 7 克制 UI——hook 不抢 wheel 视觉，需要更多
+                    引导的用户主动展开。 */}
                 <p className="mt-3 text-base leading-relaxed text-zinc-600">
                   圆心 = 0，外缘 = 10。看你人生这辆车此刻的形状，颠不颠。
                 </p>
+                <details className="mt-2 text-sm leading-relaxed text-zinc-500">
+                  <summary className="cursor-pointer list-none text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline [&::-webkit-details-marker]:hidden">
+                    完整说明 / 怎么玩
+                  </summary>
+                  {/* 经典 wheel of life 文案（润色版）：保留 8 领域 / 满意度 /
+                      圆心 0 外缘 10 / 重新画出此刻 / 马车隐喻 / 未来方向 essence。 */}
+                  <div className="mt-3 space-y-3 text-zinc-600">
+                    <p>
+                      生命之轮的 8 个区块代表你生命中的 8 个不同领域。请为你此时此刻这些领域的满意程度打分——圆心代表 0
+                      分，外缘代表 10 分。分数越低，外缘越靠近圆心。通过你的分数，重新画出此刻的生命之轮。
+                    </p>
+                    <p>
+                      生命之轮帮你看到不同领域目前正在如何影响你的生活。想想看：如果你人生的马车就在这一车轮上前进，你的路途会有多平坦
+                      / 颠簸？生命之轮还会提供给我们一个未来工作的方向。
+                    </p>
+                  </div>
+                </details>
               </header>
 
               {/* 操作提示 — 跟 framing 区分开（一个是"为什么"，一个是"怎么做"）。
