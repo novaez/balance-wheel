@@ -806,18 +806,8 @@ export default function Home() {
     ? ((rotation * GROUND_PER_DEG) % TICK_SPACING + TICK_SPACING) % TICK_SPACING
     : 0;
 
-  // Phase 1.5k — pulse 语义改为"邻接落差最大那对". 配合 Stage 4 文案
-  // "我人生这辆马车, 路途平坦还是颠簸?" — 物理上车轮转一圈时实际颠簸
-  // 幅度 = 相邻方向半径落差; 落差最大那对 sector 一起 pulse 表"路上最大那个坑".
-  // spread = 0 (路途平坦) → 不 pulse (honest 表达).
-  const adjGaps = scores.map((s, i) => Math.abs(s - scores[(i + 1) % 8]));
-  const maxGap = adjGaps.reduce((a, b) => Math.max(a, b), 0);
-  const lowestSet =
-    isReflect && maxGap > 0
-      ? new Set<number>(
-          adjGaps.flatMap((g, i) => (g === maxGap ? [i, (i + 1) % 8] : []))
-        )
-      : null;
+  // Phase 1.5l — pulse 取消 (liushu 拍). visual disturbance 完全靠 ground line
+  // 起伏 (Phase 1.5k A 路面颠簸) 表达 "路途平坦还是颠簸". sector 不再闪烁.
 
   // 渲染时为每个扇区准备"实际显示的 score"——press 中的扇区用 preview value
   // 替代已存的 score，松手才回落到真实 scores[i]。
@@ -1070,7 +1060,6 @@ export default function Home() {
                     const rad = (angle * Math.PI) / 180;
                     const lx = Math.cos(rad) * LABEL_RADIUS;
                     const ly = Math.sin(rad) * LABEL_RADIUS;
-                    const isPulsing = isReflect && lowestSet?.has(i);
                     // Eval input 阶段：未 touched 的标签字号弱化（dim），
                     // 已 touched 的标签升到正常色——视觉上是"我经过的方向亮起来"。
                     const dimUntouched =
@@ -1085,7 +1074,7 @@ export default function Home() {
                         fontSize="14"
                         fill={dim.color}
                         opacity={dimUntouched ? 0.45 : 1}
-                        fontWeight={isPulsing ? 700 : 400}
+                        fontWeight={400}
                         style={{ transition: "font-weight 0.5s, opacity 0.4s" }}
                       >
                         {dim.name}
@@ -1127,7 +1116,6 @@ export default function Home() {
                         : 1;
                     const cls =
                       [
-                        lowestSet?.has(i) ? "pulse-sector" : "",
                         isPressing ? "press-active-sector" : "",
                       ]
                         .filter(Boolean)
@@ -1272,7 +1260,7 @@ export default function Home() {
                 // 跟 D 邻接落差 pulse 共同 reflect "路途平坦还是颠簸" 意境.
                 const spread =
                   Math.max(...scores) - Math.min(...scores);
-                const amplitude = spread * 0.6;
+                const amplitude = spread * 1.2;
                 const groundX0 = vbox.x + 4;
                 const groundXEnd = vbox.x + vbox.w - 4;
                 const samples = 60;
