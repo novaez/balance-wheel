@@ -146,7 +146,25 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   }
 }
 .outline-connect {
+  stroke-width: 1.2;
   animation: outline-connect 1.2s ease-in-out forwards;
+}
+
+/* Phase 1.5v — outline 闪烁: shape 阶段触发, stroke-width 从粗到细 ease-out
+   定格. 视觉上 "画完轮子那一刻 outline 砰一下出现, 然后稳定细线". */
+@keyframes outline-flash {
+  0% {
+    stroke-width: 4;
+  }
+  100% {
+    stroke-width: 1.2;
+  }
+}
+.outline-flash {
+  animation: outline-flash 0.7s ease-out forwards;
+}
+.outline-stable {
+  stroke-width: 1.2;
 }
 
 /* shape 阶段：整轮 bob 一下让 user 看到"形状显现"。translate 沿 Y 一次，

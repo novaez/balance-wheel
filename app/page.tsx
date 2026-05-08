@@ -1218,13 +1218,16 @@ export default function Home() {
                       d={outlinePath}
                       fill="none"
                       stroke="#27272a"
-                      strokeWidth={2.2}
                       strokeLinejoin="round"
                       strokeLinecap="round"
                       className={
-                        evalPhase === "connect" ? "outline-connect" : undefined
+                        evalPhase === "connect"
+                          ? "outline-connect"
+                          : evalPhase === "shape"
+                          ? "outline-flash"
+                          : "outline-stable"
                       }
-                      opacity={evalPhase === "connect" ? 1 : 0.9}
+                      opacity={evalPhase === "connect" ? 1 : 0.95}
                       style={{ transition: "opacity 0.4s" }}
                     />
                   )}
