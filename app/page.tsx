@@ -279,10 +279,14 @@ type PresencePhase = "input" | "witnessed";
 //   ready    — 静置态，"让它跑一跑"按钮 fade-rise 出现，接 Stage 3
 type EvalPhase = "input" | "connect" | "shape" | "ready";
 
-// Center-press 起点判定：pointer 必须落在 wheel 中心 1/3 半径区域才进入 press
-// state。这是 1st person 物理隐喻的硬约束（"我从中心往外伸展"）——避免边缘
-// 误触把范式偷偷退回 3rd person scrubbing。圆桌 #3 赵博士的"directional intent"。
-const CENTER_PRESS_RADIUS = MAX_RADIUS / 3;
+// Phase 1.5c 试用版：press 起点放宽
+// ----------------------------------
+// 1.5b 之前：pointer 必须落在 wheel 中心 1/3 半径才进入 press（CENTER_PRESS_RADIUS
+//   = MAX_RADIUS / 3）；圆桌 #3 设计延伸为"中心起 + 从内向外推"。
+// 1.5c reframe：1st person essence 只指"操作发生在 wheel / 轮辐上"（vs 外部滑杆），
+//   没特指中心起点 / 没特指方向。任意扇区任意 radius 都能起 press；preview 双向
+//   跟手指走（向外 = 加分、向内 = 减分），松开 commit。
+// 落 wheel 外（distance > MAX_RADIUS）—— 静默忽略（保持现行）。
 
 // Map distance-from-center to a 0-10 score with continuous interior, integer
 // display. Distance > MAX_RADIUS clamps to 10; distance ≤ 0 clamps to 0.
@@ -303,11 +307,11 @@ function angleToSectorIndex(x: number, y: number): number {
   return Math.floor(deg / SECTOR_DEG) % 8;
 }
 
-// Press state during press-preview-release. sectorIndex stays locked once the
-// first significant move out of the center disambiguates which direction the
-// user is pushing — prevents jitter across sector boundaries from re-targeting.
+// Press state during press-preview-release. Phase 1.5c 试用版：sectorIndex 在
+// pointer down 那一刻由 down 点角度即时确定（atan2 → 0..7），press 期间不再
+// 切换；preview value 跟手指距中心的距离实时双向更新。
 type Pressing = {
-  sectorIndex: number | null; // null = pointer is in center, direction undecided
+  sectorIndex: number; // 0..7, locked at pointer down
   value: number; // 0..10 integer, what would commit if release now
 } | null;
 
@@ -422,14 +426,19 @@ export default function Home() {
     }
   }, [evalPhase, mode]);
 
-  // ---- 1st person press-preview-release handlers ----
-  // 设计决策（圆桌 #3 + 上游约束）：
-  //   - 起点 (pointerdown) 必须落在 wheel 中心 1/3 半径以内才进入 press state。
-  //     这是 1st person 物理隐喻——"我在中心向外伸展"。边缘 down 不响应（不是
-  //     bug，是 affordance：把范式锚死在中心）。
-  //   - sectorIndex 在第一次显著移动出中心后锁定，避免 jitter 在扇区边界来回切。
-  //   - 距离映射为 score 是连续的；显示数字是 round 到整数（粒度内部连续，显示整数）。
-  //   - 时长由 user 自决（无 timer）；松开 commit。
+  // ---- 1st person press-preview-release handlers (Phase 1.5c 试用版) ----
+  // 设计决策（圆桌 #3 essence + 1.5c reframe）：
+  //   - "1st person" essence = 操作发生在 wheel / 轮辐上（vs 外部滑杆），不
+  //     特指中心起点 / 不特指方向。
+  //   - 起点：pointer down 落在 wheel 任何位置（≤ MAX_RADIUS）都进入 press state。
+  //     落 wheel 外（distance > MAX_RADIUS）静默忽略。
+  //   - sectorIndex 由 pointer down 那一刻角度即时确定（atan2 → 0..7），press
+  //     期间不切换——即便手指划过相邻扇区也始终在 down 时锚定的扇区上 commit。
+  //   - preview 双向跟手指：preview radius = clamp(|finger − center|, 0, MAX_RADIUS)；
+  //     preview score = round(preview radius / MAX_RADIUS * 10)。落在已色块内
+  //     = 调小，落在已色块外 = 调大。
+  //   - 时长由 user 自决（无 timer）；松开 commit scores[sectorIndex] = preview score。
+  //   - 已 commit 的扇区可以重新 press 改值（解圆桌 #3 之前的"调小困难"）。
 
   const getSvgPoint = useCallback(
     (clientX: number, clientY: number): { x: number; y: number } | null => {
@@ -453,9 +462,8 @@ export default function Home() {
       const local = getSvgPoint(e.clientX, e.clientY);
       if (!local) return;
       const dist = Math.hypot(local.x, local.y);
-      if (dist > CENTER_PRESS_RADIUS) {
-        // 边缘点击不响应——保留 1st person 锚点；如果用户发现"按外面没反应"，
-        // 自然会把手指挪到中间（这一动作本身就是 frame 提示）。
+      if (dist > MAX_RADIUS) {
+        // 落 wheel 外（满分圆之外）静默忽略——保持"操作在轮辐上"的 essence。
         return;
       }
       e.preventDefault();
@@ -464,7 +472,9 @@ export default function Home() {
       } catch {
         // some browsers reject capture on synthetic events; safe to ignore
       }
-      setPressing({ sectorIndex: null, value: 0 });
+      const sectorIndex = angleToSectorIndex(local.x, local.y);
+      const value = distanceToScore(dist);
+      setPressing({ sectorIndex, value });
     },
     [mode, evalPhase, getSvgPoint]
   );
@@ -476,12 +486,9 @@ export default function Home() {
       if (!local) return;
       const dist = Math.hypot(local.x, local.y);
       const value = distanceToScore(dist);
-      // 第一次离开中心 ~10px 时锁定方向；之后即便 finger 摇摆也不再换扇区。
-      let nextIndex = pressing.sectorIndex;
-      if (nextIndex == null && dist > 10) {
-        nextIndex = angleToSectorIndex(local.x, local.y);
-      }
-      setPressing({ sectorIndex: nextIndex, value });
+      // sectorIndex 已在 down 时锚定，不重新计算——避免手指划过相邻扇区时 commit
+      // 错位置。preview 只跟距离更新（双向：向外加分、向内减分）。
+      setPressing({ sectorIndex: pressing.sectorIndex, value });
     },
     [pressing, getSvgPoint]
   );
@@ -489,11 +496,6 @@ export default function Home() {
   const commitPress = useCallback(() => {
     if (!pressing) return;
     const idx = pressing.sectorIndex;
-    if (idx == null) {
-      // user 没移出中心就松手——视为取消（不计入 touched）
-      setPressing(null);
-      return;
-    }
     setScores((prev) => {
       const next = prev.slice();
       next[idx] = pressing.value;
@@ -947,24 +949,45 @@ export default function Home() {
                   {/* center dot */}
                   <circle cx={0} cy={0} r={2.5} fill="#27272a" />
 
-                  {/* Phase 1.5 input 阶段中央 hint 圆圈 — 标记"中心 = 0"
-                      的 framing 锚点。仅在 user 还没开始 press 时显示，press
-                      期间隐藏避免干扰。 */}
+                  {/* Phase 1.5c 试用版 onboarding：fresh load + 还没 press 时
+                      显示 8 个 dashed 扇区轮廓（满半径外缘 dashed 圆 + 8 条
+                      径向 dashed 线），告诉用户"任何扇区都可按住"。一旦 user
+                      开始按 / 已经按过任何扇区就卸载，避免持续干扰。 */}
                   {isEval &&
                     evalPhase === "input" &&
                     !pressing &&
                     touched.every((t) => !t) && (
-                      <circle
-                        cx={0}
-                        cy={0}
-                        r={CENTER_PRESS_RADIUS}
-                        fill="none"
-                        stroke="#a1a1aa"
-                        strokeWidth={1}
-                        strokeDasharray="3 5"
-                        opacity={0.5}
-                        className="center-hint-pulse"
-                      />
+                      <g className="onboarding-hint" pointerEvents="none">
+                        <circle
+                          cx={0}
+                          cy={0}
+                          r={MAX_RADIUS}
+                          fill="none"
+                          stroke="#a1a1aa"
+                          strokeWidth={1}
+                          strokeDasharray="3 5"
+                          opacity={0.5}
+                        />
+                        {Array.from({ length: 8 }, (_, i) => {
+                          const deg = -90 + i * SECTOR_DEG;
+                          const rad = (deg * Math.PI) / 180;
+                          const x = Math.cos(rad) * MAX_RADIUS;
+                          const y = Math.sin(rad) * MAX_RADIUS;
+                          return (
+                            <line
+                              key={`onboarding-spoke-${i}`}
+                              x1={0}
+                              y1={0}
+                              x2={x.toFixed(3)}
+                              y2={y.toFixed(3)}
+                              stroke="#a1a1aa"
+                              strokeWidth={1}
+                              strokeDasharray="3 5"
+                              opacity={0.5}
+                            />
+                          );
+                        })}
+                      </g>
                     )}
                 </g>
               </g>
@@ -972,7 +995,7 @@ export default function Home() {
               {/* Press preview 数字浮现：实时显示当前预览的 score 整数。
                   位置在被 press 扇区的中线略偏外缘（既不挡视线又跟着方向走）。
                   挂在最外层 g (无 rotate)，因为这时 rotation=0 反正不影响。 */}
-              {pressing && pressing.sectorIndex != null && (
+              {pressing && (
                 <PreviewNumber
                   sectorIndex={pressing.sectorIndex}
                   value={pressing.value}
@@ -1054,7 +1077,7 @@ export default function Home() {
                     className="text-sm leading-relaxed text-zinc-500"
                   >
                     {touched.every((t) => !t)
-                      ? "把手指按在轮子中心，朝 8 个方向各推到你此刻感觉到的程度。松开就定。"
+                      ? "按住任意扇区某半径，松开就是分数。"
                       : `${touched.filter(Boolean).length} / 8 — 继续推完剩下的方向。`}
                   </p>
                 )}
