@@ -380,7 +380,7 @@ function computeBob(rotation: number, scores: Scores): number {
 // peaks in the middle, and glides to a stop. Final orientation matches start.
 const RUN_DURATION_MS = 5000;
 const RUN_TOTAL_ROTATION_DEG = 720;
-const GROUND_PER_DEG = 2.5;
+const GROUND_PER_DEG = 1.8;
 
 function easeInOutQuad(x: number): number {
   return x < 0.5 ? 2 * x * x : 1 - 2 * (1 - x) * (1 - x);
@@ -1262,35 +1262,30 @@ export default function Home() {
               )}
 
               {showGround && (() => {
-                // Phase 1.5q — ground "缓坡" 替代 1.5p 石子+沟 装饰.
-                // liushu: "应该做成小坡, 石子不明显, 让地面直线在有坡的地方
-                // 变成曲线". 3 个 obstacles (1 凸坡 + 1 凹坡 + 1 凸坡), ground
-                // line 用 polyline, y 在坡范围内按 cos 平滑弯曲, 其它地方直线.
-                // ticks 的 y 也跟 ground curve, 视觉一体.
-                const loop = TICK_SPACING * TICK_COUNT;
+                // Phase 1.5r — obstacles 不循环, 整个 5s 滚程总共 3 个缓坡.
+                // liushu: "整个滚动区间内只有 3 个障碍" + "地面滚速比 wheel 快"
+                // → GROUND_PER_DEG 2.5→1.8 让 ground 跟 wheel 视觉协调.
+                // obstacles 用 absolute progress (不 mod), 起始在 viewport 右
+                // 边外, 滚动时进入 → 经过 wheel center → 离开左边. 5s 总
+                // progress = 720 * 1.8 = 1296 svg units, 3 个 obstacles 在
+                // 250/750/1250 evenly spaced.
+                const groundProgressAbs = isRunning
+                  ? rotation * GROUND_PER_DEG
+                  : 0;
+                const wheelCenterX = vbox.x + vbox.w / 2;
                 const obstacles = [
-                  { offset: 90, type: "bump", radius: 22, height: 5 },
-                  { offset: 230, type: "pit", radius: 18, height: 4 },
-                  { offset: 360, type: "bump", radius: 20, height: 4 },
+                  { atProgress: 250, type: "bump", radius: 22, height: 5 },
+                  { atProgress: 750, type: "pit", radius: 18, height: 4 },
+                  { atProgress: 1250, type: "bump", radius: 20, height: 4 },
                 ];
-                const groundCurveY = (xRel: number) => {
-                  // xRel: relative x within wrapped loop
+                const groundCurveY = (x: number) => {
                   let dy = 0;
                   for (const o of obstacles) {
-                    const wrapped =
-                      (((o.offset - groundOffset) % loop) + loop) % loop;
-                    // 考虑 wrap-around: obstacle 可能在 viewport 内有 0 或 1 份
-                    // 影响; 取最近的 dx (含 wrap).
-                    const candidates = [
-                      xRel - wrapped,
-                      xRel - wrapped - loop,
-                      xRel - wrapped + loop,
-                    ];
-                    const dx = candidates.reduce((a, b) =>
-                      Math.abs(a) < Math.abs(b) ? a : b
-                    );
+                    const obstacleX =
+                      wheelCenterX + o.atProgress - groundProgressAbs;
+                    const dx = x - obstacleX;
                     if (Math.abs(dx) > o.radius) continue;
-                    const t = dx / o.radius; // -1 .. 1
+                    const t = dx / o.radius;
                     const bell = Math.cos((t * Math.PI) / 2) ** 2;
                     dy += (o.type === "bump" ? -1 : 1) * o.height * bell;
                   }
@@ -1302,8 +1297,7 @@ export default function Home() {
                 const points = Array.from({ length: samples + 1 }, (_, i) => {
                   const x =
                     groundX0 + ((groundXEnd - groundX0) * i) / samples;
-                  const xRel = x - groundX0;
-                  return `${x.toFixed(2)},${groundCurveY(xRel).toFixed(2)}`;
+                  return `${x.toFixed(2)},${groundCurveY(x).toFixed(2)}`;
                 });
                 return (
                   <g>
@@ -1315,8 +1309,7 @@ export default function Home() {
                     />
                     {Array.from({ length: TICK_COUNT }, (_, i) => {
                       const x = vbox.x + 4 + i * TICK_SPACING - groundOffset;
-                      const xRel = x - groundX0;
-                      const yBase = groundCurveY(xRel);
+                      const yBase = groundCurveY(x);
                       return (
                         <line
                           key={i}
