@@ -1034,10 +1034,7 @@ export default function Home() {
                 }
               >
                 <summary className="cursor-pointer list-none px-4 py-3 text-sm text-zinc-600 hover:text-zinc-900 [&::-webkit-details-marker]:hidden">
-                  <span className="inline-flex items-center gap-2">
-                    <span aria-hidden>♿</span>
-                    无障碍模式（用滑块代替手势）
-                  </span>
+                  无障碍模式 — 用滑块代替手势
                 </summary>
                 <ul className="flex flex-col gap-5 px-4 pb-5 pt-2">
                   {DIMENSIONS.map((dim, i) => {
