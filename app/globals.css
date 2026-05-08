@@ -166,22 +166,6 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   animation: wheel-shape-bob 1.2s ease-in-out;
 }
 
-/* input 阶段中央的 hint 圆圈——还没开始 press 时浮现的"这里是中心"指示。
-   极弱 pulse 提示这是 actionable 区域；touched 一旦有任何变化就会被
-   React 卸载，不需要在 CSS 里做 dismiss 动画。 */
-@keyframes center-hint-pulse {
-  0%,
-  100% {
-    opacity: 0.45;
-  }
-  50% {
-    opacity: 0.15;
-  }
-}
-.center-hint-pulse {
-  animation: center-hint-pulse 2.4s ease-in-out infinite;
-}
-
 /* Stage 6 — handwriting families for the card. The card breaks the rest of
    the UI's clinical sans for warmth (design principle 7: card is the only
    emotional outlet). Ma Shan Zheng renders CJK; Caveat handles Latin so a

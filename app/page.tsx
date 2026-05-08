@@ -402,15 +402,18 @@ export default function Home() {
 
   // Phase 1.5 — 8 个维度全都 touched 时，自动从 input 推进到 connect → shape → ready。
   // 不依赖按钮，因为最后一次 release 本身就是过渡 affordance。
+  // Phase 1.5d fix #5 — 加 !pressing 守门：reveal 阶段被 re-press 打断回 input
+  // 时，user 手指还按着，不能立即 600ms 就 advance；要等 release 后再算 timer。
   useEffect(() => {
     if (mode !== "eval") return;
     if (evalPhase !== "input") return;
+    if (pressing) return;
     if (touched.every((t) => t)) {
       // 给最后一次 release 视觉沉淀一拍，再触发 reveal 序列
       const t1 = window.setTimeout(() => setEvalPhase("connect"), 600);
       return () => window.clearTimeout(t1);
     }
-  }, [touched, evalPhase, mode]);
+  }, [touched, evalPhase, mode, pressing]);
 
   useEffect(() => {
     if (mode !== "eval") return;
@@ -458,7 +461,10 @@ export default function Home() {
   const onWheelPointerDown = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
       if (mode !== "eval") return;
-      if (evalPhase !== "input") return;
+      // Phase 1.5d fix #5 — reveal 阶段（connect/shape/ready）允许 re-press 打断
+      // 动画回 input + preview。release 后 useEffect 会重新触发 connect → shape
+      // → ready 序列。原来 evalPhase !== "input" 直接 return 让 user 在 reveal
+      // 期间感觉"突然不能调了"。
       const local = getSvgPoint(e.clientX, e.clientY);
       if (!local) return;
       const dist = Math.hypot(local.x, local.y);
@@ -471,6 +477,11 @@ export default function Home() {
         e.currentTarget.setPointerCapture(e.pointerId);
       } catch {
         // some browsers reject capture on synthetic events; safe to ignore
+      }
+      // 如果当前在 reveal 阶段，重置回 input 中断动画。touched 不重置——已 commit
+      // 的扇区保持已 commit 状态，只是新一次 press 会覆盖被按扇区的值。
+      if (evalPhase !== "input") {
+        setEvalPhase("input");
       }
       const sectorIndex = angleToSectorIndex(local.x, local.y);
       const value = distanceToScore(dist);
@@ -957,16 +968,21 @@ export default function Home() {
                     evalPhase === "input" &&
                     !pressing &&
                     touched.every((t) => !t) && (
+                      // Phase 1.5d fix #3 — onboarding hint 视觉加重：
+                      // stroke 由 zinc-400/opacity 0.5 改 zinc-500/opacity 0.7，
+                      // strokeWidth 1 → 1.5，dasharray "3 5" → "3 3"。第一眼能看
+                      // 到这是 actionable 区域；保留 dashed 不抢 wheel 视觉
+                      //（克制 UI 原则 7）。
                       <g className="onboarding-hint" pointerEvents="none">
                         <circle
                           cx={0}
                           cy={0}
                           r={MAX_RADIUS}
                           fill="none"
-                          stroke="#a1a1aa"
-                          strokeWidth={1}
-                          strokeDasharray="3 5"
-                          opacity={0.5}
+                          stroke="#71717a"
+                          strokeWidth={1.5}
+                          strokeDasharray="3 3"
+                          opacity={0.7}
                         />
                         {Array.from({ length: 8 }, (_, i) => {
                           const deg = -90 + i * SECTOR_DEG;
@@ -980,10 +996,10 @@ export default function Home() {
                               y1={0}
                               x2={x.toFixed(3)}
                               y2={y.toFixed(3)}
-                              stroke="#a1a1aa"
-                              strokeWidth={1}
-                              strokeDasharray="3 5"
-                              opacity={0.5}
+                              stroke="#71717a"
+                              strokeWidth={1.5}
+                              strokeDasharray="3 3"
+                              opacity={0.7}
                             />
                           );
                         })}
@@ -1046,7 +1062,7 @@ export default function Home() {
                     收起，遵守原则 7 克制 UI——hook 不抢 wheel 视觉，需要更多
                     引导的用户主动展开。 */}
                 <p className="mt-3 text-base leading-relaxed text-zinc-600">
-                  圆心 = 0，外缘 = 10。看你人生这辆车此刻的形状，颠不颠。
+                  圆心 = 0，外缘 = 10。画出此刻你这辆人生马车的车轮。
                 </p>
                 <details className="mt-2 text-sm leading-relaxed text-zinc-500">
                   <summary className="cursor-pointer list-none text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline [&::-webkit-details-marker]:hidden">
@@ -1132,7 +1148,11 @@ export default function Home() {
                 </summary>
                 <ul className="flex flex-col gap-5 px-4 pb-5 pt-2">
                   {DIMENSIONS.map((dim, i) => {
-                    const value = scores[i] ?? DEFAULT_SCORE;
+                    // Phase 1.5d fix #2 — 读 displayScores 跟 wheel 同源真相，
+                    // fresh load 时未 touched 的扇区 wheel 强制归 0；slider 之
+                    // 前直接读 scores 会显示历史 commit 的 stale 值，跟 wheel
+                    // 不一致。改值仍走 handleSliderChange 标 touched。
+                    const value = displayScores[i] ?? DEFAULT_SCORE;
                     return (
                       <li key={dim.name} className="flex flex-col gap-2">
                         <div className="flex items-baseline justify-between">
@@ -1195,7 +1215,7 @@ export default function Home() {
                 className="fade-rise text-3xl font-medium leading-snug tracking-tight text-zinc-900 md:text-4xl"
                 style={{ animationDelay: "1.2s" }}
               >
-                我这辆车，颠在哪？
+                我这辆马车，颠在哪？
               </h1>
               <div
                 className="fade-rise flex flex-col gap-3"
