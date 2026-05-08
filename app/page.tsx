@@ -806,12 +806,18 @@ export default function Home() {
     ? ((rotation * GROUND_PER_DEG) % TICK_SPACING + TICK_SPACING) % TICK_SPACING
     : 0;
 
-  // Pulse only fires in reflect; once the user moves to presence/done, the
-  // form is the focus, so the disturbance cue stops to avoid distraction.
-  const minScore = scores.reduce((a, b) => (b < a ? b : a), MAX_SCORE);
-  const lowestSet = isReflect
-    ? new Set(scores.map((s, i) => (s === minScore ? i : -1)).filter((i) => i >= 0))
-    : null;
+  // Phase 1.5k — pulse 语义改为"邻接落差最大那对". 配合 Stage 4 文案
+  // "我人生这辆马车, 路途平坦还是颠簸?" — 物理上车轮转一圈时实际颠簸
+  // 幅度 = 相邻方向半径落差; 落差最大那对 sector 一起 pulse 表"路上最大那个坑".
+  // spread = 0 (路途平坦) → 不 pulse (honest 表达).
+  const adjGaps = scores.map((s, i) => Math.abs(s - scores[(i + 1) % 8]));
+  const maxGap = adjGaps.reduce((a, b) => Math.max(a, b), 0);
+  const lowestSet =
+    isReflect && maxGap > 0
+      ? new Set<number>(
+          adjGaps.flatMap((g, i) => (g === maxGap ? [i, (i + 1) % 8] : []))
+        )
+      : null;
 
   // 渲染时为每个扇区准备"实际显示的 score"——press 中的扇区用 preview value
   // 替代已存的 score，松手才回落到真实 scores[i]。
@@ -1260,32 +1266,60 @@ export default function Home() {
                 />
               )}
 
-              {showGround && (
-                <g>
-                  <line
-                    x1={vbox.x + 4}
-                    y1={GROUND_Y}
-                    x2={vbox.x + vbox.w - 4}
-                    y2={GROUND_Y}
-                    stroke="#a1a1aa"
-                    strokeWidth={1}
-                  />
-                  {Array.from({ length: TICK_COUNT }, (_, i) => {
-                    const x = vbox.x + 4 + i * TICK_SPACING - groundOffset;
-                    return (
-                      <line
-                        key={i}
-                        x1={x}
-                        y1={GROUND_Y + 2}
-                        x2={x - 8}
-                        y2={GROUND_Y + 12}
-                        stroke="#d4d4d8"
-                        strokeWidth={1}
-                      />
-                    );
-                  })}
-                </g>
-              )}
+              {showGround && (() => {
+                // Phase 1.5k — A 路面颠簸: ground line 按 8 维 spread 起伏.
+                // spread = max - min (路途整体落差), amplitude 0 (平坦) ~ 6 (满分差).
+                // 跟 D 邻接落差 pulse 共同 reflect "路途平坦还是颠簸" 意境.
+                const spread =
+                  Math.max(...scores) - Math.min(...scores);
+                const amplitude = spread * 0.6;
+                const groundX0 = vbox.x + 4;
+                const groundXEnd = vbox.x + vbox.w - 4;
+                const samples = 60;
+                const waveY = (x: number) => {
+                  const phase =
+                    ((x - groundX0) / (groundXEnd - groundX0)) *
+                      4 *
+                      Math.PI -
+                    groundOffset / 12;
+                  return GROUND_Y + amplitude * Math.sin(phase);
+                };
+                const points = Array.from(
+                  { length: samples + 1 },
+                  (_, i) => {
+                    const x =
+                      groundX0 +
+                      ((groundXEnd - groundX0) * i) / samples;
+                    return `${x.toFixed(2)},${waveY(x).toFixed(2)}`;
+                  }
+                );
+                return (
+                  <g>
+                    <polyline
+                      points={points.join(" ")}
+                      stroke="#a1a1aa"
+                      strokeWidth={1}
+                      fill="none"
+                    />
+                    {Array.from({ length: TICK_COUNT }, (_, i) => {
+                      const x =
+                        vbox.x + 4 + i * TICK_SPACING - groundOffset;
+                      const yBase = waveY(x);
+                      return (
+                        <line
+                          key={i}
+                          x1={x}
+                          y1={yBase + 2}
+                          x2={x - 8}
+                          y2={yBase + 12}
+                          stroke="#d4d4d8"
+                          strokeWidth={1}
+                        />
+                      );
+                    })}
+                  </g>
+                );
+              })()}
             </svg>
           </div>
         </section>
