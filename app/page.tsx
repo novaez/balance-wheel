@@ -843,7 +843,7 @@ export default function Home() {
             .join(" ")}
         >
           <h2 className="mb-6 self-start text-sm font-medium tracking-wide text-zinc-500">
-            {isEval ? "我这辆马车" : "我这辆马车"}
+            {isEval ? "我人生的马车" : "我人生的马车"}
           </h2>
           {/* Wheel SVG — Phase 1.5 装上 pointer 事件做 1st person 推扇区。
               touch-action: none 阻止 mobile 默认 pull-to-refresh / page scroll
@@ -975,9 +975,7 @@ export default function Home() {
                       整个 input 阶段（直到 8 维全 touched 进 reveal）都显示;
                       press 期间 opacity 略降 (0.7 → 0.35) 让 dashed 不抢被 press
                       扇区色块焦点, 但仍可见作 visual reference。 */}
-                  {isEval &&
-                    evalPhase === "input" &&
-                    !touched.every((t) => t) && (
+                  {isEval && evalPhase === "input" && (
                       // Phase 1.5d fix #3 — onboarding hint 视觉加重：
                       // stroke 由 zinc-400/opacity 0.5 改 zinc-500/opacity 0.7，
                       // strokeWidth 1 → 1.5，dasharray "3 5" → "3 3"。第一眼能看
@@ -996,7 +994,7 @@ export default function Home() {
                           stroke="#71717a"
                           strokeWidth={1.5}
                           strokeDasharray="3 3"
-                          opacity={pressing ? 0.35 : 0.7}
+                          opacity={pressing ? 0.2 : 0.4}
                         />
                         {Array.from({ length: 8 }, (_, i) => {
                           const deg = -90 + i * SECTOR_DEG;
@@ -1013,7 +1011,7 @@ export default function Home() {
                               stroke="#71717a"
                               strokeWidth={1.5}
                               strokeDasharray="3 3"
-                              opacity={pressing ? 0.35 : 0.7}
+                              opacity={pressing ? 0.2 : 0.4}
                             />
                           );
                         })}
@@ -1229,7 +1227,7 @@ export default function Home() {
                 className="fade-rise text-3xl font-medium leading-snug tracking-tight text-zinc-900 md:text-4xl"
                 style={{ animationDelay: "1.2s" }}
               >
-                我这辆马车，颠在哪？
+                我人生这辆马车，颠在哪？
               </h1>
               <div
                 className="fade-rise flex flex-col gap-3"
