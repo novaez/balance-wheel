@@ -15,14 +15,18 @@ const DIMENSIONS = [
 ] as const;
 
 const STORAGE_KEY = "balance-wheel-current";
-const DEFAULT_SCORE = 5;
-const MIN_SCORE = 1;
+const DEFAULT_SCORE = 0;
+// 1st person 改造：圆心 = 0、外缘 = 10。Phase 1 曾把下限设到 1（避免滑块滑到底
+// 整块色扇消失带来的"我的健康一无所有"误读）；Phase 1.5 因为顶部 framing 已
+// 显式锚 "圆心 = 0"，0 是产品语义里合法的回答（"完全失重 / 完全空"），下限放
+// 开到 0；wire-compatibility：旧数据里 1-10 的整数继续被读、被显示，没有迁移成本。
+const MIN_SCORE = 0;
 const MAX_SCORE = 10;
 const PRESENCE_MAX_LEN = 240;
 const COMMITMENT_MAX_LEN = 80;
 const CAPTION_MAX_LEN = 80;
 
-type Scores = number[]; // length 8, each 1..10 integer
+type Scores = number[]; // length 8, each 0..10 integer
 type Presence = { text: string; at: string };
 type Commitment = { text: string; at: string };
 
@@ -143,11 +147,14 @@ function saveState(
 // Wheel center is (0,0). Sector i covers angles
 //   start = -90 + i * 45  (degrees, clockwise from 12 o'clock)
 //   end   = start + 45
-// Radius = score / 10 * MAX_RADIUS, but with a small floor so score=1 still shows.
+// Radius = score / 10 * MAX_RADIUS, with a small floor for non-zero scores so
+// even score=1 reads as a visible color slice. Score=0 collapses to the
+// center (no slice) — Phase 1.5 lets users say "圆心 = 0" honestly.
 const MAX_RADIUS = 160;
 const MIN_VISIBLE_RATIO = 0.12;
 
 function sectorRadius(score: number): number {
+  if (score <= 0) return 0;
   return MAX_RADIUS * (MIN_VISIBLE_RATIO + (score / MAX_SCORE) * (1 - MIN_VISIBLE_RATIO));
 }
 
@@ -155,6 +162,11 @@ function sectorPath(index: number, score: number): string {
   const start = -90 + index * 45;
   const end = start + 45;
   const r = sectorRadius(score);
+  if (r <= 0) {
+    // Sector collapsed to a point — render an invisible degenerate path so
+    // React's keyed list stays stable and stroke-based animations don't error.
+    return `M 0 0 Z`;
+  }
 
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const x1 = Math.cos(toRad(start)) * r;
@@ -254,6 +266,44 @@ const VBOX_RUN = {
 
 type Mode = "eval" | "running" | "reflect" | "presence" | "done";
 type PresencePhase = "input" | "witnessed";
+// Eval-mode internal phases. 圆桌 #3 4-阶段框架的数字折叠：
+//   input    — user × 8 次 press-preview-release（主动）
+//   connect  — 全轮 outline 一次性自动连线（动画 reveal，~1.2s）
+//   shape    — 整轮 bob + 形状显现（动画 reveal，~1.2s）
+//   ready    — 静置态，"让它跑一跑"按钮 fade-rise 出现，接 Stage 3
+type EvalPhase = "input" | "connect" | "shape" | "ready";
+
+// Center-press 起点判定：pointer 必须落在 wheel 中心 1/3 半径区域才进入 press
+// state。这是 1st person 物理隐喻的硬约束（"我从中心往外伸展"）——避免边缘
+// 误触把范式偷偷退回 3rd person scrubbing。圆桌 #3 赵博士的"directional intent"。
+const CENTER_PRESS_RADIUS = MAX_RADIUS / 3;
+
+// Map distance-from-center to a 0-10 score with continuous interior, integer
+// display. Distance > MAX_RADIUS clamps to 10; distance ≤ 0 clamps to 0.
+function distanceToScore(distance: number): number {
+  const raw = (distance / MAX_RADIUS) * MAX_SCORE;
+  return Math.min(MAX_SCORE, Math.max(MIN_SCORE, Math.round(raw)));
+}
+
+// Angle in screen coords (atan2 with svg y-down): convert to wheel sector
+// index 0..7 (clockwise from 12 o'clock).
+function angleToSectorIndex(x: number, y: number): number {
+  // atan2 returns radians in (-PI, PI], 0 at +x axis, +PI/2 at +y (screen down).
+  // We want 0 at -y axis (12 o'clock), increasing clockwise.
+  let deg = (Math.atan2(y, x) * 180) / Math.PI; // -180..180, 0=right
+  deg = deg + 90; // 0 at top (12 o'clock)
+  if (deg < 0) deg += 360;
+  if (deg >= 360) deg -= 360;
+  return Math.floor(deg / SECTOR_DEG) % 8;
+}
+
+// Press state during press-preview-release. sectorIndex stays locked once the
+// first significant move out of the center disambiguates which direction the
+// user is pushing — prevents jitter across sector boundaries from re-targeting.
+type Pressing = {
+  sectorIndex: number | null; // null = pointer is in center, direction undecided
+  value: number; // 0..10 integer, what would commit if release now
+} | null;
 
 export default function Home() {
   const [scores, setScores] = useState<Scores>(defaultScores);
@@ -273,6 +323,17 @@ export default function Home() {
   const [presenceDraft, setPresenceDraft] = useState("");
   const [presencePhase, setPresencePhase] = useState<PresencePhase>("input");
   const [commitDraft, setCommitDraft] = useState("");
+  // Phase 1.5 — Stage 2 1st person 交互状态
+  const [evalPhase, setEvalPhase] = useState<EvalPhase>("input");
+  // touched[i] = 用户已经亲手按过这个扇区一次（首次进入时全 false；进 ready
+  // 后才 reveal）。用 touched 而不是 score>0 是因为 score=0 是合法的回答——
+  // user 故意把某个维度推到中心代表"完全空"。
+  const [touched, setTouched] = useState<boolean[]>(() =>
+    DIMENSIONS.map(() => false)
+  );
+  const [pressing, setPressing] = useState<Pressing>(null);
+  const [a11yOpen, setA11yOpen] = useState(false);
+  const wheelSvgRef = useRef<SVGSVGElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
   // Hydrate from localStorage after mount (avoids SSR mismatch).
@@ -329,11 +390,148 @@ export default function Home() {
     };
   }, [mode, runId]);
 
-  const handleChange = useCallback((index: number, value: number) => {
+  // Phase 1.5 — 8 个维度全都 touched 时，自动从 input 推进到 connect → shape → ready。
+  // 不依赖按钮，因为最后一次 release 本身就是过渡 affordance。
+  useEffect(() => {
+    if (mode !== "eval") return;
+    if (evalPhase !== "input") return;
+    if (touched.every((t) => t)) {
+      // 给最后一次 release 视觉沉淀一拍，再触发 reveal 序列
+      const t1 = window.setTimeout(() => setEvalPhase("connect"), 600);
+      return () => window.clearTimeout(t1);
+    }
+  }, [touched, evalPhase, mode]);
+
+  useEffect(() => {
+    if (mode !== "eval") return;
+    if (evalPhase === "connect") {
+      // outline 连线动画 ~1.2s，结束后进 shape
+      const t = window.setTimeout(() => setEvalPhase("shape"), 1200);
+      return () => window.clearTimeout(t);
+    }
+    if (evalPhase === "shape") {
+      // 整轮 bob ~1.2s，结束后 ready（按钮 fade-rise）
+      const t = window.setTimeout(() => setEvalPhase("ready"), 1200);
+      return () => window.clearTimeout(t);
+    }
+  }, [evalPhase, mode]);
+
+  // ---- 1st person press-preview-release handlers ----
+  // 设计决策（圆桌 #3 + 上游约束）：
+  //   - 起点 (pointerdown) 必须落在 wheel 中心 1/3 半径以内才进入 press state。
+  //     这是 1st person 物理隐喻——"我在中心向外伸展"。边缘 down 不响应（不是
+  //     bug，是 affordance：把范式锚死在中心）。
+  //   - sectorIndex 在第一次显著移动出中心后锁定，避免 jitter 在扇区边界来回切。
+  //   - 距离映射为 score 是连续的；显示数字是 round 到整数（粒度内部连续，显示整数）。
+  //   - 时长由 user 自决（无 timer）；松开 commit。
+
+  const getSvgPoint = useCallback(
+    (clientX: number, clientY: number): { x: number; y: number } | null => {
+      const svg = wheelSvgRef.current;
+      if (!svg) return null;
+      const pt = svg.createSVGPoint();
+      pt.x = clientX;
+      pt.y = clientY;
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return null;
+      const local = pt.matrixTransform(ctm.inverse());
+      return { x: local.x, y: local.y };
+    },
+    []
+  );
+
+  const onWheelPointerDown = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      if (mode !== "eval") return;
+      if (evalPhase !== "input") return;
+      const local = getSvgPoint(e.clientX, e.clientY);
+      if (!local) return;
+      const dist = Math.hypot(local.x, local.y);
+      if (dist > CENTER_PRESS_RADIUS) {
+        // 边缘点击不响应——保留 1st person 锚点；如果用户发现"按外面没反应"，
+        // 自然会把手指挪到中间（这一动作本身就是 frame 提示）。
+        return;
+      }
+      e.preventDefault();
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // some browsers reject capture on synthetic events; safe to ignore
+      }
+      setPressing({ sectorIndex: null, value: 0 });
+    },
+    [mode, evalPhase, getSvgPoint]
+  );
+
+  const onWheelPointerMove = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      if (!pressing) return;
+      const local = getSvgPoint(e.clientX, e.clientY);
+      if (!local) return;
+      const dist = Math.hypot(local.x, local.y);
+      const value = distanceToScore(dist);
+      // 第一次离开中心 ~10px 时锁定方向；之后即便 finger 摇摆也不再换扇区。
+      let nextIndex = pressing.sectorIndex;
+      if (nextIndex == null && dist > 10) {
+        nextIndex = angleToSectorIndex(local.x, local.y);
+      }
+      setPressing({ sectorIndex: nextIndex, value });
+    },
+    [pressing, getSvgPoint]
+  );
+
+  const commitPress = useCallback(() => {
+    if (!pressing) return;
+    const idx = pressing.sectorIndex;
+    if (idx == null) {
+      // user 没移出中心就松手——视为取消（不计入 touched）
+      setPressing(null);
+      return;
+    }
+    setScores((prev) => {
+      const next = prev.slice();
+      next[idx] = pressing.value;
+      return next;
+    });
+    setTouched((prev) => {
+      if (prev[idx]) return prev;
+      const next = prev.slice();
+      next[idx] = true;
+      return next;
+    });
+    setPressing(null);
+  }, [pressing]);
+
+  const onWheelPointerUp = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      if (!pressing) return;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+      commitPress();
+    },
+    [pressing, commitPress]
+  );
+
+  const onWheelPointerCancel = useCallback(() => {
+    // 系统取消（滑出窗口 / 接电话等）：当前预览值丢弃，不计入 touched。
+    setPressing(null);
+  }, []);
+
+  // ---- a11y fallback slider ----
+  const handleSliderChange = useCallback((index: number, value: number) => {
     setScores((prev) => {
       if (prev[index] === value) return prev;
       const next = prev.slice();
       next[index] = value;
+      return next;
+    });
+    setTouched((prev) => {
+      if (prev[index]) return prev;
+      const next = prev.slice();
+      next[index] = true;
       return next;
     });
   }, []);
@@ -349,6 +547,9 @@ export default function Home() {
 
   const handleBack = useCallback(() => {
     setMode("eval");
+    setEvalPhase("input");
+    setTouched(DIMENSIONS.map(() => false));
+    setPressing(null);
     setProgress(0);
   }, []);
 
@@ -423,6 +624,8 @@ export default function Home() {
   // In reflect/presence/done, rotation is 0 (= 720 mod 360, same final
   // orientation), so computeBob gives the same resting offset the wheel had
   // at end-of-ride — no upward jolt at running→reflect transition.
+  // Phase 1.5 — eval/shape 阶段的"整轮 bob 形状显现"：用 CSS class 触发一次性
+  // bob 动画，而不是用 computeBob（那个跟跑车物理耦合，不适合 reveal 时刻）。
   const bob = showGround ? computeBob(rotation, scores) : 0;
   const groundOffset = isRunning
     ? ((rotation * GROUND_PER_DEG) % TICK_SPACING + TICK_SPACING) % TICK_SPACING
@@ -434,6 +637,28 @@ export default function Home() {
   const lowestSet = isReflect
     ? new Set(scores.map((s, i) => (s === minScore ? i : -1)).filter((i) => i >= 0))
     : null;
+
+  // 渲染时为每个扇区准备"实际显示的 score"——press 中的扇区用 preview value
+  // 替代已存的 score，松手才回落到真实 scores[i]。
+  const displayScores: Scores = scores.map((s, i) => {
+    if (pressing && pressing.sectorIndex === i) return pressing.value;
+    // 未 touched 的扇区在 input 阶段不展示（避免 "5 分默认" 的暗示——让用户
+    // 真的从 0 开始 reach out）。
+    if (mode === "eval" && evalPhase === "input" && !touched[i]) return 0;
+    return s;
+  });
+
+  // 8 sector tips for the connect-phase outline polygon. 用 sector 中线半径
+  // 取尖 (而不是 sector 的边角) — 视觉上是"把每个方向你伸到了哪连起来"，
+  // 跟纸质 wheel of life "连线" 步骤的语义一致。
+  const polygonPoints = displayScores
+    .map((s, i) => {
+      const r = sectorRadius(s);
+      const angle = -90 + i * SECTOR_DEG + SECTOR_DEG / 2;
+      const rad = (angle * Math.PI) / 180;
+      return `${(Math.cos(rad) * r).toFixed(2)},${(Math.sin(rad) * r).toFixed(2)}`;
+    })
+    .join(" ");
 
   if (isDone && presence) {
     return (
@@ -456,7 +681,7 @@ export default function Home() {
                 } ${(MAX_RADIUS + VBOX_PAD) * 2}`}
                 className="h-auto w-full max-w-[200px]"
                 role="img"
-                aria-label="平衡轮快照"
+                aria-label="生命之轮快照"
               >
                 <circle
                   cx={0}
@@ -521,7 +746,7 @@ export default function Home() {
               {/* Watermark — virality hook. Latin handwriting echoes the
                   Chinese script above; subtle but unmistakable. */}
               <p className="font-en-hand mt-1 text-sm tracking-wide text-zinc-400">
-                balance-wheel
+                wheel of life
               </p>
             </div>
           </article>
@@ -555,14 +780,30 @@ export default function Home() {
             .join(" ")}
         >
           <h2 className="mb-6 self-start text-sm font-medium tracking-wide text-zinc-500">
-            {isEval ? "你的车轮" : "我这辆车"}
+            {isEval ? "我这辆车" : "我这辆车"}
           </h2>
+          {/* Wheel SVG — Phase 1.5 装上 pointer 事件做 1st person 推扇区。
+              touch-action: none 阻止 mobile 默认 pull-to-refresh / page scroll
+              在 wheel 区域上拦截 pointer move（关键 mobile fix）。 */}
           <div className="w-full max-w-[340px] md:max-w-[440px]">
             <svg
+              ref={wheelSvgRef}
               viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
-              className="h-auto w-full"
+              className={[
+                "h-auto w-full",
+                isEval ? "select-none" : "",
+                isEval && evalPhase === "shape" ? "wheel-shape-bob" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              style={isEval ? { touchAction: "none" } : undefined}
               role="img"
-              aria-label="平衡轮"
+              aria-label="生命之轮"
+              onPointerDown={isEval ? onWheelPointerDown : undefined}
+              onPointerMove={isEval ? onWheelPointerMove : undefined}
+              onPointerUp={isEval ? onWheelPointerUp : undefined}
+              onPointerCancel={isEval ? onWheelPointerCancel : undefined}
+              onPointerLeave={isEval ? onWheelPointerCancel : undefined}
             >
               {/* Outline + labels — geometric annotations of the wheel,
                   share the bob translate so they sink with the wheel; both
@@ -576,6 +817,10 @@ export default function Home() {
                     const lx = Math.cos(rad) * LABEL_RADIUS;
                     const ly = Math.sin(rad) * LABEL_RADIUS;
                     const isPulsing = isReflect && lowestSet?.has(i);
+                    // Eval input 阶段：未 touched 的标签字号弱化（dim），
+                    // 已 touched 的标签升到正常色——视觉上是"我经过的方向亮起来"。
+                    const dimUntouched =
+                      isEval && evalPhase === "input" && !touched[i];
                     return (
                       <text
                         key={`label-${dim.name}`}
@@ -585,8 +830,9 @@ export default function Home() {
                         dominantBaseline="middle"
                         fontSize="14"
                         fill={dim.color}
+                        opacity={dimUntouched ? 0.45 : 1}
                         fontWeight={isPulsing ? 700 : 400}
-                        style={{ transition: "font-weight 0.5s" }}
+                        style={{ transition: "font-weight 0.5s, opacity 0.4s" }}
                       >
                         {dim.name}
                       </text>
@@ -599,18 +845,87 @@ export default function Home() {
                   {DIMENSIONS.map((dim, i) => (
                     <path
                       key={dim.name}
-                      d={sectorPath(i, scores[i] ?? DEFAULT_SCORE)}
+                      d={sectorPath(i, displayScores[i])}
                       fill={dim.color}
                       stroke="#ffffff"
                       strokeWidth={1.5}
                       strokeLinejoin="round"
-                      className={lowestSet?.has(i) ? "pulse-sector" : undefined}
+                      // Press preview 视觉强度（克制原则裁判）：
+                      // 当前正在 press 的扇区只调 opacity（subtle scale lift via
+                      // CSS），不加 glow / color shift / 复杂 motion。其它扇区
+                      // 略 fade 让被推的方向自然成为视觉焦点。
+                      opacity={
+                        pressing != null
+                          ? pressing.sectorIndex === i
+                            ? 1
+                            : 0.55
+                          : 1
+                      }
+                      className={[
+                        lowestSet?.has(i) ? "pulse-sector" : "",
+                        pressing && pressing.sectorIndex === i
+                          ? "press-active-sector"
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ") || undefined}
+                      style={{ transition: "opacity 0.2s" }}
                     />
                   ))}
+
+                  {/* Phase 1.5 connect 阶段：8 个 sector 尖端的 polygon 连线。
+                      stroke-dasharray 动画从 "全是 gap" 渐变到 "全连"，1.2s 走完。
+                      shape / ready 阶段持续显示静态 polygon。 */}
+                  {isEval && evalPhase !== "input" && (
+                    <polygon
+                      points={polygonPoints}
+                      fill="none"
+                      stroke="#27272a"
+                      strokeWidth={1.5}
+                      strokeLinejoin="round"
+                      className={
+                        evalPhase === "connect" ? "outline-connect" : undefined
+                      }
+                      opacity={evalPhase === "connect" ? 1 : 0.5}
+                      style={{ transition: "opacity 0.4s" }}
+                    />
+                  )}
+
                   {/* center dot */}
                   <circle cx={0} cy={0} r={2.5} fill="#27272a" />
+
+                  {/* Phase 1.5 input 阶段中央 hint 圆圈 — 标记"中心 = 0"
+                      的 framing 锚点。仅在 user 还没开始 press 时显示，press
+                      期间隐藏避免干扰。 */}
+                  {isEval &&
+                    evalPhase === "input" &&
+                    !pressing &&
+                    touched.every((t) => !t) && (
+                      <circle
+                        cx={0}
+                        cy={0}
+                        r={CENTER_PRESS_RADIUS}
+                        fill="none"
+                        stroke="#a1a1aa"
+                        strokeWidth={1}
+                        strokeDasharray="3 5"
+                        opacity={0.5}
+                        className="center-hint-pulse"
+                      />
+                    )}
                 </g>
               </g>
+
+              {/* Press preview 数字浮现：实时显示当前预览的 score 整数。
+                  位置在被 press 扇区的中线略偏外缘（既不挡视线又跟着方向走）。
+                  挂在最外层 g (无 rotate)，因为这时 rotation=0 反正不影响。 */}
+              {pressing && pressing.sectorIndex != null && (
+                <PreviewNumber
+                  sectorIndex={pressing.sectorIndex}
+                  value={pressing.value}
+                  bob={bob}
+                />
+              )}
 
               {showGround && (
                 <g>
@@ -642,70 +957,137 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Right: sliders / running / reflect / presence / done */}
+        {/* Right: framing / running / reflect / presence */}
         <section className="w-full md:w-1/2">
           {isEval ? (
             <>
-              <header className="mb-8">
+              <header className="mb-6">
                 <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
-                  平衡轮自评
+                  生命之轮
                 </h1>
-                <p className="mt-2 text-sm text-zinc-500">
-                  给 8 个生活维度各打 1 - 10 分。拖动滑块，左侧的轮子会实时变形。
+                {/* Phase 1.5 — 入口 framing block。12-30 字，圆心-外缘锚点 +
+                    马车隐喻。位置在 H1 之下、操作提示之上；字号比 H1 小、比
+                    操作提示略大；中性色不抢 wheel 视觉。 */}
+                <p className="mt-3 text-base leading-relaxed text-zinc-600">
+                  圆心 = 0，外缘 = 10。看你人生这辆车此刻的形状，颠不颠。
                 </p>
               </header>
 
-              <ul className="flex flex-col gap-5">
-                {DIMENSIONS.map((dim, i) => {
-                  const value = scores[i] ?? DEFAULT_SCORE;
-                  return (
-                    <li key={dim.name} className="flex flex-col gap-2">
-                      <div className="flex items-baseline justify-between">
-                        <label
-                          htmlFor={`slider-${i}`}
-                          className="flex items-center gap-2 text-sm font-medium text-zinc-700"
-                        >
-                          <span
-                            className="inline-block h-2.5 w-2.5 rounded-full"
-                            style={{ backgroundColor: dim.color }}
-                            aria-hidden
-                          />
-                          {dim.name}
-                        </label>
-                        <span className="tabular-nums text-sm font-semibold text-zinc-900">
-                          {value}
-                        </span>
-                      </div>
-                      <input
-                        id={`slider-${i}`}
-                        type="range"
-                        min={MIN_SCORE}
-                        max={MAX_SCORE}
-                        step={1}
-                        value={value}
-                        onChange={(e) => handleChange(i, Number(e.target.value))}
-                        onInput={(e) =>
-                          handleChange(i, Number((e.target as HTMLInputElement).value))
-                        }
-                        className="w-full accent-zinc-900 h-1 appearance-none cursor-pointer"
-                        style={{ touchAction: "none" }}
-                        aria-label={`${dim.name} 评分`}
-                        aria-valuemin={MIN_SCORE}
-                        aria-valuemax={MAX_SCORE}
-                        aria-valuenow={value}
-                      />
-                    </li>
-                  );
-                })}
-              </ul>
+              {/* 操作提示 — 跟 framing 区分开（一个是"为什么"，一个是"怎么做"）。
+                  随 evalPhase 变文案：input 期间提示如何 press；touched 全满后
+                  reveal 阶段切到"看到你的车"叙事。 */}
+              <div className="mb-8 min-h-[3rem]">
+                {evalPhase === "input" && (
+                  <p
+                    key="hint-input"
+                    className="text-sm leading-relaxed text-zinc-500"
+                  >
+                    {touched.every((t) => !t)
+                      ? "把手指按在轮子中心，朝 8 个方向各推到你此刻感觉到的程度。松开就定。"
+                      : `${touched.filter(Boolean).length} / 8 — 继续推完剩下的方向。`}
+                  </p>
+                )}
+                {evalPhase === "connect" && (
+                  <p
+                    key="hint-connect"
+                    className="fade-rise text-sm leading-relaxed text-zinc-500"
+                  >
+                    把你伸到的位置连起来，看见你的车轮。
+                  </p>
+                )}
+                {evalPhase === "shape" && (
+                  <p
+                    key="hint-shape"
+                    className="fade-rise text-sm leading-relaxed text-zinc-500"
+                  >
+                    这是你这辆车此刻的形状。
+                  </p>
+                )}
+                {evalPhase === "ready" && (
+                  <p
+                    key="hint-ready"
+                    className="fade-rise text-sm leading-relaxed text-zinc-500"
+                  >
+                    准备好了——让它跑一程，看看颠不颠。
+                  </p>
+                )}
+              </div>
 
-              <button
-                type="button"
-                onClick={startRide}
-                className="mt-10 w-full rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+              {evalPhase === "ready" && (
+                <button
+                  type="button"
+                  onClick={startRide}
+                  className="fade-rise w-full rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+                >
+                  让它跑一跑 →
+                </button>
+              )}
+
+              {/* a11y fallback — slider 折叠在 details 后。键盘 / screen reader
+                  / 不便做 press-preview-release 手势的用户走这条路。
+                  默认收起；展开后跟 Phase 1 一样的 8 滑块（min=0 max=10）。 */}
+              <details
+                className="mt-10 rounded-lg border border-zinc-200 bg-white/40"
+                open={a11yOpen}
+                onToggle={(e) =>
+                  setA11yOpen((e.target as HTMLDetailsElement).open)
+                }
               >
-                让它跑一跑 →
-              </button>
+                <summary className="cursor-pointer list-none px-4 py-3 text-sm text-zinc-600 hover:text-zinc-900 [&::-webkit-details-marker]:hidden">
+                  <span className="inline-flex items-center gap-2">
+                    <span aria-hidden>♿</span>
+                    无障碍模式（用滑块代替手势）
+                  </span>
+                </summary>
+                <ul className="flex flex-col gap-5 px-4 pb-5 pt-2">
+                  {DIMENSIONS.map((dim, i) => {
+                    const value = scores[i] ?? DEFAULT_SCORE;
+                    return (
+                      <li key={dim.name} className="flex flex-col gap-2">
+                        <div className="flex items-baseline justify-between">
+                          <label
+                            htmlFor={`slider-${i}`}
+                            className="flex items-center gap-2 text-sm font-medium text-zinc-700"
+                          >
+                            <span
+                              className="inline-block h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: dim.color }}
+                              aria-hidden
+                            />
+                            {dim.name}
+                          </label>
+                          <span className="tabular-nums text-sm font-semibold text-zinc-900">
+                            {value}
+                          </span>
+                        </div>
+                        <input
+                          id={`slider-${i}`}
+                          type="range"
+                          min={MIN_SCORE}
+                          max={MAX_SCORE}
+                          step={1}
+                          value={value}
+                          onChange={(e) =>
+                            handleSliderChange(i, Number(e.target.value))
+                          }
+                          onInput={(e) =>
+                            handleSliderChange(
+                              i,
+                              Number((e.target as HTMLInputElement).value)
+                            )
+                          }
+                          className="w-full accent-zinc-900 h-1 appearance-none cursor-pointer"
+                          style={{ touchAction: "none" }}
+                          aria-label={`${dim.name} 评分，0 到 10`}
+                          aria-valuemin={MIN_SCORE}
+                          aria-valuemax={MAX_SCORE}
+                          aria-valuenow={value}
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
             </>
           ) : isRunning ? (
             <header>
@@ -836,5 +1218,43 @@ export default function Home() {
         </section>
       </main>
     </div>
+  );
+}
+
+// Floating preview number for press-preview-release. Renders a number near the
+// outer edge of the actively pressed sector so the user reads "I'm at 7" while
+// the finger is still down. Position interpolates between center hint and
+// outer edge based on the value, so the number tracks the finger.
+function PreviewNumber({
+  sectorIndex,
+  value,
+  bob,
+}: {
+  sectorIndex: number;
+  value: number;
+  bob: number;
+}) {
+  const angle = -90 + sectorIndex * SECTOR_DEG + SECTOR_DEG / 2;
+  const rad = (angle * Math.PI) / 180;
+  // 显示位置：扇区中线上、当前预览半径稍外一点（+18px），让数字浮在色块顶端
+  // 而不是被色块盖住。
+  const r = sectorRadius(value) + 18;
+  const x = Math.cos(rad) * r;
+  const y = Math.sin(rad) * r + bob;
+  return (
+    <g pointerEvents="none">
+      <text
+        x={x}
+        y={y}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize="20"
+        fontWeight={600}
+        fill="#18181b"
+        className="preview-number"
+      >
+        {value}
+      </text>
+    </g>
   );
 }

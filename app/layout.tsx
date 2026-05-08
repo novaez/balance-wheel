@@ -28,8 +28,8 @@ const caveat = Caveat({
 });
 
 export const metadata: Metadata = {
-  title: "平衡轮自评",
-  description: "花 3 - 5 分钟给 8 个生活维度打分，看看你的车轮跑起来什么样。",
+  title: "生命之轮",
+  description: "花 3 - 5 分钟给 8 个生活维度打分，看你人生这辆车此刻的形状，颠不颠。",
 };
 
 export default function RootLayout({

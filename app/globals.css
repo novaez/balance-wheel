@@ -103,6 +103,85 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   animation: witness 1.2s ease-out forwards;
 }
 
+/* Phase 1.5 — Stage 2 1st person 交互附属动画。
+
+   设计原则 7（克制 UI 框架）裁判：所有 press-preview-release 反馈只用
+   opacity / 极轻微 scale，不加 glow / color shift / 复杂 motion。
+   "subtle scale lift" 上限 1.04，超过会被视觉识别为弹性反馈而非"指尖压力下沉"。 */
+
+/* press 中的扇区微微"鼓"出来——用 transform 起点在 0,0（wheel 中心），
+   scale 1.04 几乎不察觉但能让被推方向自然成为视觉焦点。 */
+.press-active-sector {
+  transform-origin: 0 0;
+  transform: scale(1.04);
+  transition: transform 0.1s ease-out;
+}
+
+/* press 期间的预览数字。fade-in 极快（120ms），数字本身随 SVG 重渲染逐帧
+   更新，所以"跟着手指走"是直接的。 */
+@keyframes preview-number-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.preview-number {
+  animation: preview-number-in 0.12s ease-out forwards;
+}
+
+/* connect 阶段：8 个扇区尖端连成 polygon。stroke-dasharray 从 "全是 gap"
+   动画到 "全连"，1.2s 走完——视觉上是"把每个方向你伸到了哪连起来"。
+   path-length 用 SVG attribute pathLength=1 是最干净的，但 polygon 不支持
+   pathLength；用大数 dasharray 配 dashoffset 也能近似（圆周 ≤ 2π·160 ≈ 1005）。 */
+@keyframes outline-connect {
+  from {
+    stroke-dasharray: 1200 1200;
+    stroke-dashoffset: 1200;
+  }
+  to {
+    stroke-dasharray: 1200 1200;
+    stroke-dashoffset: 0;
+  }
+}
+.outline-connect {
+  animation: outline-connect 1.2s ease-in-out forwards;
+}
+
+/* shape 阶段：整轮 bob 一下让 user 看到"形状显现"。translate 沿 Y 一次，
+   不重复——bob 只是认知激活的一次微停顿，不该变成持续律动。 */
+@keyframes wheel-shape-bob {
+  0% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-6px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+.wheel-shape-bob {
+  animation: wheel-shape-bob 1.2s ease-in-out;
+}
+
+/* input 阶段中央的 hint 圆圈——还没开始 press 时浮现的"这里是中心"指示。
+   极弱 pulse 提示这是 actionable 区域；touched 一旦有任何变化就会被
+   React 卸载，不需要在 CSS 里做 dismiss 动画。 */
+@keyframes center-hint-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+.center-hint-pulse {
+  animation: center-hint-pulse 2.4s ease-in-out infinite;
+}
+
 /* Stage 6 — handwriting families for the card. The card breaks the rest of
    the UI's clinical sans for warmth (design principle 7: card is the only
    emotional outlet). Ma Shan Zheng renders CJK; Caveat handles Latin so a
