@@ -1260,7 +1260,7 @@ export default function Home() {
                 // 跟 D 邻接落差 pulse 共同 reflect "路途平坦还是颠簸" 意境.
                 const spread =
                   Math.max(...scores) - Math.min(...scores);
-                const amplitude = spread * 1.2;
+                const amplitude = spread * 3.0;
                 const groundX0 = vbox.x + 4;
                 const groundXEnd = vbox.x + vbox.w - 4;
                 const samples = 60;
