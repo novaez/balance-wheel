@@ -1274,9 +1274,9 @@ export default function Home() {
                   : 0;
                 const wheelCenterX = vbox.x + vbox.w / 2;
                 const obstacles = [
-                  { atProgress: 250, type: "bump", radius: 22, height: 5 },
-                  { atProgress: 750, type: "pit", radius: 18, height: 4 },
-                  { atProgress: 1250, type: "bump", radius: 20, height: 4 },
+                  { atProgress: 250, type: "bump", radius: 18, height: 10 },
+                  { atProgress: 750, type: "pit", radius: 15, height: 8 },
+                  { atProgress: 1250, type: "bump", radius: 17, height: 9 },
                 ];
                 const groundCurveY = (x: number) => {
                   let dy = 0;
