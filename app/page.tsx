@@ -480,6 +480,12 @@ export default function Home() {
     DIMENSIONS.map(() => false)
   );
   const [pressing, setPressing] = useState<Pressing>(null);
+  // Phase 1.5h fix #2 — commit 后让 PreviewNumber 保留 500ms 再消失，
+  // 让 quick tap (down + 即 up，无 move) 也能看到数字浮现。
+  const [commitFlash, setCommitFlash] = useState<{
+    sectorIndex: number;
+    value: number;
+  } | null>(null);
   const [a11yOpen, setA11yOpen] = useState(false);
   const wheelSvgRef = useRef<SVGSVGElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -645,9 +651,10 @@ export default function Home() {
   const commitPress = useCallback(() => {
     if (!pressing) return;
     const idx = pressing.sectorIndex;
+    const value = pressing.value;
     setScores((prev) => {
       const next = prev.slice();
-      next[idx] = pressing.value;
+      next[idx] = value;
       return next;
     });
     setTouched((prev) => {
@@ -657,7 +664,16 @@ export default function Home() {
       return next;
     });
     setPressing(null);
+    // Phase 1.5h fix #2 — 让数字 linger 500ms 再消失。
+    setCommitFlash({ sectorIndex: idx, value });
   }, [pressing]);
+
+  // Phase 1.5h fix #2 — commitFlash 自动 clear，配合 PreviewNumber linger 显示。
+  useEffect(() => {
+    if (!commitFlash) return;
+    const t = setTimeout(() => setCommitFlash(null), 500);
+    return () => clearTimeout(t);
+  }, [commitFlash]);
 
   const onWheelPointerUp = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
@@ -1212,10 +1228,10 @@ export default function Home() {
               {/* Press preview 数字浮现：实时显示当前预览的 score 整数。
                   位置在被 press 扇区的中线略偏外缘（既不挡视线又跟着方向走）。
                   挂在最外层 g (无 rotate)，因为这时 rotation=0 反正不影响。 */}
-              {pressing && (
+              {(pressing || commitFlash) && (
                 <PreviewNumber
-                  sectorIndex={pressing.sectorIndex}
-                  value={pressing.value}
+                  sectorIndex={(pressing ?? commitFlash!).sectorIndex}
+                  value={(pressing ?? commitFlash!).value}
                   bob={bob}
                 />
               )}
