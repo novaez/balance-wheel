@@ -146,7 +146,7 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   }
 }
 .outline-connect {
-  stroke-width: 1.2;
+  stroke-width: 0.8;
   animation: outline-connect 1.2s ease-in-out forwards;
 }
 
@@ -157,14 +157,14 @@ input[type="range"]:focus-visible::-moz-range-thumb {
     stroke-width: 4;
   }
   100% {
-    stroke-width: 1.2;
+    stroke-width: 0.8;
   }
 }
 .outline-flash {
   animation: outline-flash 0.7s ease-out forwards;
 }
 .outline-stable {
-  stroke-width: 1.2;
+  stroke-width: 0.8;
 }
 
 /* shape 阶段：整轮 bob 一下让 user 看到"形状显现"。translate 沿 Y 一次，
