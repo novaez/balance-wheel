@@ -677,6 +677,35 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [commitFlash]);
 
+  // Phase 1.5o — reflect 阶段 wheel 物理颠簸 jitter (替代 1.5k-l ground wave).
+  // 模拟 "车停在颠路上 / 发动机怠速 / 轮子上下抖动" 物理感:
+  // - spread = 0 (路平): 完全静止
+  // - spread > 0: vertical sine 抖动, amplitude 跟 spread 关联, 周期 ~0.7s
+  // ground line 恢复直线 (颠簸主体在 wheel, ground 只是参考线).
+  const [reflectBumpY, setReflectBumpY] = useState(0);
+  useEffect(() => {
+    if (mode !== "reflect") {
+      setReflectBumpY(0);
+      return;
+    }
+    const spread = Math.max(...scores) - Math.min(...scores);
+    if (spread === 0) {
+      setReflectBumpY(0);
+      return;
+    }
+    const amp = Math.min(spread * 0.6, 7); // max ~7 svg units
+    const period = 700;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = (now - start) / period;
+      setReflectBumpY(amp * Math.sin(t * 2 * Math.PI));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [mode, scores]);
+
   const onWheelPointerUp = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
       if (!pressing) return;
@@ -1055,7 +1084,7 @@ export default function Home() {
               {/* Outline + labels — geometric annotations of the wheel,
                   share the bob translate so they sink with the wheel; both
                   stay outside the rotate group so running doesn't spin them. */}
-              <g transform={`translate(0 ${bob.toFixed(3)})`}>
+              <g transform={`translate(0 ${(bob + reflectBumpY).toFixed(3)})`}>
                 {outlineCircle()}
                 {!isRunning &&
                   DIMENSIONS.map((dim, i) => {
@@ -1086,7 +1115,7 @@ export default function Home() {
                   })}
               </g>
 
-              <g transform={`translate(0 ${bob.toFixed(3)})`}>
+              <g transform={`translate(0 ${(bob + reflectBumpY).toFixed(3)})`}>
                 <g transform={`rotate(${rotation.toFixed(3)})`}>
                   {/* Phase 1.5g — 框架 vs 填色分层（奋笔疾书 hatching D'）
                       ====================================================
@@ -1257,60 +1286,36 @@ export default function Home() {
                 />
               )}
 
-              {showGround && (() => {
-                // Phase 1.5k — A 路面颠簸: ground line 按 8 维 spread 起伏.
-                // spread = max - min (路途整体落差), amplitude 0 (平坦) ~ 6 (满分差).
-                // 跟 D 邻接落差 pulse 共同 reflect "路途平坦还是颠簸" 意境.
-                const spread =
-                  Math.max(...scores) - Math.min(...scores);
-                const amplitude = spread * 3.0;
-                const groundX0 = vbox.x + 4;
-                const groundXEnd = vbox.x + vbox.w - 4;
-                const samples = 60;
-                const waveY = (x: number) => {
-                  const phase =
-                    ((x - groundX0) / (groundXEnd - groundX0)) *
-                      4 *
-                      Math.PI -
-                    groundOffset / 12;
-                  return GROUND_Y + amplitude * Math.sin(phase);
-                };
-                const points = Array.from(
-                  { length: samples + 1 },
-                  (_, i) => {
-                    const x =
-                      groundX0 +
-                      ((groundXEnd - groundX0) * i) / samples;
-                    return `${x.toFixed(2)},${waveY(x).toFixed(2)}`;
-                  }
-                );
-                return (
-                  <g>
-                    <polyline
-                      points={points.join(" ")}
-                      stroke="#a1a1aa"
-                      strokeWidth={1}
-                      fill="none"
-                    />
-                    {Array.from({ length: TICK_COUNT }, (_, i) => {
-                      const x =
-                        vbox.x + 4 + i * TICK_SPACING - groundOffset;
-                      const yBase = waveY(x);
-                      return (
-                        <line
-                          key={i}
-                          x1={x}
-                          y1={yBase + 2}
-                          x2={x - 8}
-                          y2={yBase + 12}
-                          stroke="#d4d4d8"
-                          strokeWidth={1}
-                        />
-                      );
-                    })}
-                  </g>
-                );
-              })()}
+              {showGround && (
+                <g>
+                  {/* Phase 1.5o — ground line 恢复直线 (颠簸主体在 wheel
+                      vertical jitter, 见 reflectBumpY). running 阶段 ticks 用
+                      groundOffset 滚动表"车在跑"; reflect 阶段 groundOffset=0
+                      ticks 静止表"车停下". */}
+                  <line
+                    x1={vbox.x + 4}
+                    y1={GROUND_Y}
+                    x2={vbox.x + vbox.w - 4}
+                    y2={GROUND_Y}
+                    stroke="#a1a1aa"
+                    strokeWidth={1}
+                  />
+                  {Array.from({ length: TICK_COUNT }, (_, i) => {
+                    const x = vbox.x + 4 + i * TICK_SPACING - groundOffset;
+                    return (
+                      <line
+                        key={i}
+                        x1={x}
+                        y1={GROUND_Y + 2}
+                        x2={x - 8}
+                        y2={GROUND_Y + 12}
+                        stroke="#d4d4d8"
+                        strokeWidth={1}
+                      />
+                    );
+                  })}
+                </g>
+              )}
             </svg>
           </div>
         </section>
