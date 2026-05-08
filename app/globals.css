@@ -166,6 +166,16 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   animation: wheel-shape-bob 1.2s ease-in-out;
 }
 
+/* Phase 1.5e fix #3 — wheel-shape-bob 中断时 transform revert 平滑过渡。
+   1.5d 加的 reveal 阶段允许 user press 扇区中断动画，但 CSS animation class
+   被移除瞬间 transform 从动画中段值（如 translateY(-6px)）瞬时回 0，视觉
+   "跳一下"。给外层 svg 一个 transition 兜底——animation 期间由 keyframes
+   控制（优先级高于 transition，无影响），class 移除后 transform property
+   变化触发 transition，平滑过渡到 0（克制原则 7：不超过 200ms）。 */
+.wheel-shape-bob-host {
+  transition: transform 0.18s ease-out;
+}
+
 /* Stage 6 — handwriting families for the card. The card breaks the rest of
    the UI's clinical sans for warmth (design principle 7: card is the only
    emotional outlet). Ma Shan Zheng renders CJK; Caveat handles Latin so a

@@ -843,7 +843,7 @@ export default function Home() {
             .join(" ")}
         >
           <h2 className="mb-6 self-start text-sm font-medium tracking-wide text-zinc-500">
-            {isEval ? "我这辆车" : "我这辆车"}
+            {isEval ? "我这辆马车" : "我这辆马车"}
           </h2>
           {/* Wheel SVG — Phase 1.5 装上 pointer 事件做 1st person 推扇区。
               touch-action: none 阻止 mobile 默认 pull-to-refresh / page scroll
@@ -855,6 +855,11 @@ export default function Home() {
               className={[
                 "h-auto w-full",
                 isEval ? "select-none" : "",
+                // Phase 1.5e fix #3 — wheel-shape-bob-host 一直 apply transition,
+                // shape 阶段加 wheel-shape-bob 触发一次性 keyframes 动画;
+                // 动画被 press 中断 / 自然结束 class 移除时, transition 兜底
+                // 让 transform 平滑回 0, 不再 "跳一下"。
+                isEval ? "wheel-shape-bob-host" : "",
                 isEval && evalPhase === "shape" ? "wheel-shape-bob" : "",
               ]
                 .filter(Boolean)
@@ -960,20 +965,29 @@ export default function Home() {
                   {/* center dot */}
                   <circle cx={0} cy={0} r={2.5} fill="#27272a" />
 
-                  {/* Phase 1.5c 试用版 onboarding：fresh load + 还没 press 时
-                      显示 8 个 dashed 扇区轮廓（满半径外缘 dashed 圆 + 8 条
-                      径向 dashed 线），告诉用户"任何扇区都可按住"。一旦 user
-                      开始按 / 已经按过任何扇区就卸载，避免持续干扰。 */}
+                  {/* Phase 1.5c 试用版 onboarding：input 阶段持续显示 8 个
+                      dashed 扇区轮廓（满半径外缘 dashed 圆 + 8 条径向 dashed 线），
+                      告诉用户"任何扇区都可按住" + 提供"画时感受分数"的参考线。
+
+                      Phase 1.5e fix #4：原条件含 `!pressing && touched.every(t=>!t)`,
+                      意味 user 开始 press 或 commit 任何一格后 hint 就消失——但
+                      liushu 反馈"画时虚线没了, 是需要的, 能帮感受分数"。改成
+                      整个 input 阶段（直到 8 维全 touched 进 reveal）都显示;
+                      press 期间 opacity 略降 (0.7 → 0.35) 让 dashed 不抢被 press
+                      扇区色块焦点, 但仍可见作 visual reference。 */}
                   {isEval &&
                     evalPhase === "input" &&
-                    !pressing &&
-                    touched.every((t) => !t) && (
+                    !touched.every((t) => t) && (
                       // Phase 1.5d fix #3 — onboarding hint 视觉加重：
                       // stroke 由 zinc-400/opacity 0.5 改 zinc-500/opacity 0.7，
                       // strokeWidth 1 → 1.5，dasharray "3 5" → "3 3"。第一眼能看
                       // 到这是 actionable 区域；保留 dashed 不抢 wheel 视觉
                       //（克制 UI 原则 7）。
-                      <g className="onboarding-hint" pointerEvents="none">
+                      <g
+                        className="onboarding-hint"
+                        pointerEvents="none"
+                        style={{ transition: "opacity 0.2s ease-out" }}
+                      >
                         <circle
                           cx={0}
                           cy={0}
@@ -982,7 +996,7 @@ export default function Home() {
                           stroke="#71717a"
                           strokeWidth={1.5}
                           strokeDasharray="3 3"
-                          opacity={0.7}
+                          opacity={pressing ? 0.35 : 0.7}
                         />
                         {Array.from({ length: 8 }, (_, i) => {
                           const deg = -90 + i * SECTOR_DEG;
@@ -999,7 +1013,7 @@ export default function Home() {
                               stroke="#71717a"
                               strokeWidth={1.5}
                               strokeDasharray="3 3"
-                              opacity={0.7}
+                              opacity={pressing ? 0.35 : 0.7}
                             />
                           );
                         })}
