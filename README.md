@@ -2,7 +2,7 @@
 
 一个让任何人花 3-5 分钟自评人生这辆车的网页小工具。8 个维度评分变成自行车两轮上的色扇——平衡时圆滚滚一帆风顺，失衡时颠簸疲惫。
 
-> 早期开发名为"平衡轮"，2026-05-07 跟随交互范式 1st person 转向一并改名为"生命之轮"。包名 / 部署 worker name 已切到 `wheel-of-life`；GitHub repo rename 在 GUI 完成后 30 天内旧 URL 自动 redirect。
+> 早期开发名为"平衡轮"，2026-05-07 跟随交互范式 1st person 转向一并改名为"生命之轮"。包名已切到 `wheel-of-life`；GitHub repo 已 rename 为 `wheel-of-life`（旧 URL 30 天 redirect）；CF Pages project 的 URL rename 待后续 dashboard 操作。
 
 ## 设计理念
 
@@ -18,7 +18,7 @@
 
 - Next.js 15+ (App Router) + TypeScript + Tailwind CSS
 - 静态导出（`output: 'export'`），纯前端无后端
-- 部署：Cloudflare Pages
+- 部署：Cloudflare Pages（dashboard 配 GitHub repo binding，push to main 自动 build + deploy）
 
 ## 本地开发
 
