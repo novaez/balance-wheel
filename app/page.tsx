@@ -677,34 +677,9 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [commitFlash]);
 
-  // Phase 1.5o — reflect 阶段 wheel 物理颠簸 jitter (替代 1.5k-l ground wave).
-  // 模拟 "车停在颠路上 / 发动机怠速 / 轮子上下抖动" 物理感:
-  // - spread = 0 (路平): 完全静止
-  // - spread > 0: vertical sine 抖动, amplitude 跟 spread 关联, 周期 ~0.7s
-  // ground line 恢复直线 (颠簸主体在 wheel, ground 只是参考线).
-  const [reflectBumpY, setReflectBumpY] = useState(0);
-  useEffect(() => {
-    if (mode !== "reflect") {
-      setReflectBumpY(0);
-      return;
-    }
-    const spread = Math.max(...scores) - Math.min(...scores);
-    if (spread === 0) {
-      setReflectBumpY(0);
-      return;
-    }
-    const amp = Math.min(spread * 0.6, 7); // max ~7 svg units
-    const period = 700;
-    const start = performance.now();
-    let raf = 0;
-    const tick = (now: number) => {
-      const t = (now - start) / period;
-      setReflectBumpY(amp * Math.sin(t * 2 * Math.PI));
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [mode, scores]);
+  // Phase 1.5p — 1.5o 的 reflect 阶段 jitter 删除 (liushu: "停止滚动时还在
+  // 上下抖动, 不对"). 颠簸物理只在 running 阶段表达 (wheel bob = computeBob
+  // 的 wheel 自身不规则; 加 ground obstacles 让 wheel 弹更厉害).
 
   const onWheelPointerUp = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
@@ -1084,7 +1059,7 @@ export default function Home() {
               {/* Outline + labels — geometric annotations of the wheel,
                   share the bob translate so they sink with the wheel; both
                   stay outside the rotate group so running doesn't spin them. */}
-              <g transform={`translate(0 ${(bob + reflectBumpY).toFixed(3)})`}>
+              <g transform={`translate(0 ${bob.toFixed(3)})`}>
                 {outlineCircle()}
                 {!isRunning &&
                   DIMENSIONS.map((dim, i) => {
@@ -1115,7 +1090,7 @@ export default function Home() {
                   })}
               </g>
 
-              <g transform={`translate(0 ${(bob + reflectBumpY).toFixed(3)})`}>
+              <g transform={`translate(0 ${bob.toFixed(3)})`}>
                 <g transform={`rotate(${rotation.toFixed(3)})`}>
                   {/* Phase 1.5g — 框架 vs 填色分层（奋笔疾书 hatching D'）
                       ====================================================
@@ -1288,10 +1263,10 @@ export default function Home() {
 
               {showGround && (
                 <g>
-                  {/* Phase 1.5o — ground line 恢复直线 (颠簸主体在 wheel
-                      vertical jitter, 见 reflectBumpY). running 阶段 ticks 用
-                      groundOffset 滚动表"车在跑"; reflect 阶段 groundOffset=0
-                      ticks 静止表"车停下". */}
+                  {/* Phase 1.5p — ground line 恢复直线; 颠簸主体回到 running 阶段
+                      wheel 自身不规则 (computeBob). 加 ground obstacles (小石子 +
+                      小沟) 视觉提示"路面不平整, 象征不平整的人生之路", 配合 wheel
+                      bob 让滚动时颠簸感更真实. */}
                   <line
                     x1={vbox.x + 4}
                     y1={GROUND_Y}
@@ -1300,6 +1275,44 @@ export default function Home() {
                     stroke="#a1a1aa"
                     strokeWidth={1}
                   />
+                  {/* obstacles (静态 array, groundOffset 滚动 + wrap-around) */}
+                  {(() => {
+                    const loop = TICK_SPACING * TICK_COUNT;
+                    const obstacles = [
+                      { offset: 55, type: "bump", size: 2.5 },
+                      { offset: 130, type: "pit", size: 3 },
+                      { offset: 205, type: "bump", size: 3.5 },
+                      { offset: 270, type: "bump", size: 2 },
+                      { offset: 340, type: "pit", size: 2.5 },
+                      { offset: 395, type: "bump", size: 3 },
+                    ];
+                    return obstacles.map((o, idx) => {
+                      const wrapped =
+                        (((o.offset - groundOffset) % loop) + loop) % loop;
+                      const x = vbox.x + 4 + wrapped;
+                      if (o.type === "bump") {
+                        return (
+                          <circle
+                            key={`obstacle-${idx}`}
+                            cx={x}
+                            cy={GROUND_Y - o.size * 0.6}
+                            r={o.size}
+                            fill="#a1a1aa"
+                          />
+                        );
+                      }
+                      // pit: 凹陷的半圆 (white fill 截断 ground line)
+                      return (
+                        <path
+                          key={`obstacle-${idx}`}
+                          d={`M ${x - o.size} ${GROUND_Y} A ${o.size} ${o.size * 0.7} 0 0 0 ${x + o.size} ${GROUND_Y} Z`}
+                          fill="#ffffff"
+                          stroke="#a1a1aa"
+                          strokeWidth={1}
+                        />
+                      );
+                    });
+                  })()}
                   {Array.from({ length: TICK_COUNT }, (_, i) => {
                     const x = vbox.x + 4 + i * TICK_SPACING - groundOffset;
                     return (
