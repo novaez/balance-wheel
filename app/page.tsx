@@ -186,6 +186,144 @@ function sectorPath(index: number, score: number): string {
   )} 0 0 1 ${x2.toFixed(3)} ${y2.toFixed(3)} Z`;
 }
 
+// Phase 1.5g — 手绘填色：奋笔疾书 hatching
+// =========================================
+// liushu oracle："框架是精确印好的纸 (boundary 不抖, 严格规整), 填色是手绘
+// 涂出来的"。D' 方案 = N 条独立 <line> 段，每条角度 / 长度 / 位置 jitter，
+// 模拟真人快速涂色的草图感：线条不齐 / 有交叉 / 有空隙 / 有粗细变化。
+// clipPath 把溢出的部分裁掉 → 精确 boundary 在外层 stroke path 描出，内层
+// hatching 自然落在 sector 内（边缘 stroke 被切到 boundary 上，类似真人涂
+// 色超出格子被画框框住）。
+//
+// helpers (零依赖)：
+//   mulberry32(seed) — 32-bit deterministic PRNG，[0,1)；React render 间稳定。
+//   hashSeed(...nums) — 简单整数 mix → 32-bit seed。
+//   jitterColor(hex, lightDelta) — 同色微 lightness 偏移（线性插值到白/黑）。
+
+function mulberry32(seed: number): () => number {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function hashSeed(...nums: number[]): number {
+  let h = 0x9e3779b9 | 0;
+  for (const n of nums) {
+    h ^= n | 0;
+    h = Math.imul(h, 0x85ebca6b);
+    h ^= h >>> 13;
+  }
+  return h >>> 0;
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return { r, g, b };
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const c = (n: number) => Math.max(0, Math.min(255, Math.round(n)))
+    .toString(16)
+    .padStart(2, "0");
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+// 同色微 lightness jitter。delta > 0 向白偏（变浅），delta < 0 向黑偏。
+function jitterColor(hex: string, lightDelta: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  if (lightDelta >= 0) {
+    return rgbToHex(
+      r + (255 - r) * lightDelta,
+      g + (255 - g) * lightDelta,
+      b + (255 - b) * lightDelta
+    );
+  } else {
+    const k = 1 + lightDelta; // 0..1
+    return rgbToHex(r * k, g * k, b * k);
+  }
+}
+
+// 奋笔疾书 hatching 渲染。在扇区 bounding region 内 sample N 条短 stroke,
+// clipPath 裁回扇区精确轮廓内。
+//
+// Phase 1.5g 关键：strokePatternScore 跟 displayScore 解耦。
+//   - displayScore：决定"色块半径 r"——press 时随手指走 (preview value)。
+//   - strokePatternScore：决定"stroke 数 N + seed"——press 时锁定到 MAX_SCORE,
+//     避免 score 跨整数边界 reseed-resample 产生 stroke 数 / 位置 jitter。
+//   非 press 时两者相等；press 时 stroke pattern 用满分密度，clipPath 按
+//   preview 半径裁切，stroke 数 / 位置 / 走向稳定。
+function ScribbleHatchingFill({
+  sectorIndex,
+  displayScore,
+  strokePatternScore,
+  color,
+}: {
+  sectorIndex: number;
+  displayScore: number;
+  strokePatternScore: number;
+  color: string;
+}): React.ReactElement | null {
+  if (displayScore <= 0) return null;
+  // 注意：r 用 strokePatternScore 算 stroke 总走向范围（press 时是满分半径），
+  // clipPath 用 displayScore 把 stroke 裁到 preview 半径。这样 press 拖动时
+  // stroke 数量 / 起点不变，只是被 clip 的"露出范围"在变。
+  const r = sectorRadius(strokePatternScore);
+  const start = -90 + sectorIndex * SECTOR_DEG;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const sectorMidDeg = start + SECTOR_DEG / 2;
+  const baseStrokeDeg = sectorMidDeg + 70; // 跟扇区中线 ~70° 夹角
+  // density: 满分 ~80 strokes (扇区面积大), 低分 ~22。N 由 strokePatternScore
+  // 决定 → press 时是 80（满分密度），所以拖动半径不抖。
+  const N = Math.max(22, Math.round(22 + strokePatternScore * 5.8));
+  const rng = mulberry32(hashSeed(sectorIndex, 0xd2, N));
+  const lines: React.ReactElement[] = [];
+  for (let i = 0; i < N; i++) {
+    // 起点：极坐标 sample（sqrt 让分布更均匀，按面积比例）
+    const tR = Math.sqrt(rng());
+    const r0 = tR * r * 0.95;
+    const theta0Deg = start + rng() * SECTOR_DEG;
+    const theta0 = toRad(theta0Deg);
+    const x0 = Math.cos(theta0) * r0;
+    const y0 = Math.sin(theta0) * r0;
+    // stroke 方向：base 角度 ± 25° jitter（奋笔疾书时手不稳定）
+    const strokeAngleDeg = baseStrokeDeg + (rng() - 0.5) * 50;
+    const strokeAngle = toRad(strokeAngleDeg);
+    // stroke 长度：短 stroke 居多（10-35），偶尔长（35-60）
+    const len = 10 + rng() * (rng() > 0.7 ? 50 : 25);
+    const half = len / 2;
+    const x1 = x0 - Math.cos(strokeAngle) * half;
+    const y1 = y0 - Math.sin(strokeAngle) * half;
+    const x2 = x0 + Math.cos(strokeAngle) * half;
+    const y2 = y0 + Math.sin(strokeAngle) * half;
+    const sw = 1.0 + rng() * 1.6;
+    const lightDelta = (rng() - 0.5) * 0.24;
+    const strokeColor = jitterColor(color, lightDelta);
+    const op = 0.5 + rng() * 0.35;
+    lines.push(
+      <line
+        key={`scribble-${sectorIndex}-${i}`}
+        x1={x1.toFixed(3)}
+        y1={y1.toFixed(3)}
+        x2={x2.toFixed(3)}
+        y2={y2.toFixed(3)}
+        stroke={strokeColor}
+        strokeWidth={sw.toFixed(2)}
+        strokeLinecap="round"
+        opacity={op.toFixed(2)}
+      />
+    );
+  }
+  return <g>{lines}</g>;
+}
+
 // Reference outline at exactly MAX_RADIUS — a 10-score sector touches it
 // (that's what "10 / 满分" means). Visibility under partial scores comes
 // from stroke depth (zinc-400 dashed on a near-white background), not from
@@ -755,16 +893,40 @@ export default function Home() {
                   strokeWidth={1}
                   strokeDasharray="2 4"
                 />
-                {DIMENSIONS.map((dim, i) => (
-                  <path
-                    key={dim.name}
-                    d={sectorPath(i, scores[i] ?? DEFAULT_SCORE)}
-                    fill={dim.color}
-                    stroke="#ffffff"
-                    strokeWidth={1.5}
-                    strokeLinejoin="round"
-                  />
-                ))}
+                {/* Phase 1.5g — souvenir card 的 mini wheel 也用 hatching fill,
+                    跟 main wheel 视觉一致。done 阶段不存在 press, 所以
+                    strokePatternScore = scores[i]。clipPath id 加 -snap 后缀
+                    避免跟 main wheel 的 sec-clip-i 冲突（同一 DOM 同时存在
+                    会指向 main wheel 的 displayScores 路径）。 */}
+                <defs>
+                  {DIMENSIONS.map((_, i) => (
+                    <clipPath key={`snap-clip-${i}`} id={`snap-clip-${i}`}>
+                      <path d={sectorPath(i, scores[i] ?? DEFAULT_SCORE)} />
+                    </clipPath>
+                  ))}
+                </defs>
+                {DIMENSIONS.map((dim, i) => {
+                  const s = scores[i] ?? DEFAULT_SCORE;
+                  return (
+                    <g key={dim.name}>
+                      <g clipPath={`url(#snap-clip-${i})`}>
+                        <ScribbleHatchingFill
+                          sectorIndex={i}
+                          displayScore={s}
+                          strokePatternScore={s}
+                          color={dim.color}
+                        />
+                      </g>
+                      <path
+                        d={sectorPath(i, s)}
+                        fill="none"
+                        stroke={dim.color}
+                        strokeWidth={1.4}
+                        strokeLinejoin="round"
+                      />
+                    </g>
+                  );
+                })}
                 <circle cx={0} cy={0} r={2.5} fill="#27272a" />
               </svg>
 
@@ -910,36 +1072,70 @@ export default function Home() {
 
               <g transform={`translate(0 ${bob.toFixed(3)})`}>
                 <g transform={`rotate(${rotation.toFixed(3)})`}>
-                  {DIMENSIONS.map((dim, i) => (
-                    <path
-                      key={dim.name}
-                      d={sectorPath(i, displayScores[i])}
-                      fill={dim.color}
-                      stroke="#ffffff"
-                      strokeWidth={1.5}
-                      strokeLinejoin="round"
-                      // Press preview 视觉强度（克制原则裁判）：
-                      // 当前正在 press 的扇区只调 opacity（subtle scale lift via
-                      // CSS），不加 glow / color shift / 复杂 motion。其它扇区
-                      // 略 fade 让被推的方向自然成为视觉焦点。
-                      opacity={
-                        pressing != null
-                          ? pressing.sectorIndex === i
-                            ? 1
-                            : 0.55
-                          : 1
-                      }
-                      className={[
+                  {/* Phase 1.5g — 框架 vs 填色分层（奋笔疾书 hatching D'）
+                      ====================================================
+                      oracle: 边界（径向分隔线 + 外弧）= 精确印好的纸；填色 =
+                      手绘涂出来的。每个扇区用 clipPath 裁回精确轮廓，内部
+                      ScribbleHatchingFill 走 N 条 jitter 短 stroke，外层
+                      sectorPath 描精确 boundary stroke（不抖）。
+                      press 期间 stroke pattern 锁定到 MAX_SCORE 密度，clipPath
+                      跟 preview 半径走 → stroke 数稳定，只是露出半径在变。 */}
+                  <defs>
+                    {DIMENSIONS.map((_, i) => (
+                      <clipPath key={`sec-clip-${i}`} id={`sec-clip-${i}`}>
+                        <path d={sectorPath(i, displayScores[i])} />
+                      </clipPath>
+                    ))}
+                  </defs>
+                  {DIMENSIONS.map((dim, i) => {
+                    const isPressing =
+                      pressing != null && pressing.sectorIndex === i;
+                    // press 期间锁定 stroke pattern 到满分密度；非 press 时按
+                    // displayScore 决定密度。 score=0 不渲染 fill。
+                    const strokePatternScore = isPressing
+                      ? MAX_SCORE
+                      : displayScores[i];
+                    const sectorOpacity =
+                      pressing != null
+                        ? isPressing
+                          ? 1
+                          : 0.55
+                        : 1;
+                    const cls =
+                      [
                         lowestSet?.has(i) ? "pulse-sector" : "",
-                        pressing && pressing.sectorIndex === i
-                          ? "press-active-sector"
-                          : "",
+                        isPressing ? "press-active-sector" : "",
                       ]
                         .filter(Boolean)
-                        .join(" ") || undefined}
-                      style={{ transition: "opacity 0.2s" }}
-                    />
-                  ))}
+                        .join(" ") || undefined;
+                    return (
+                      <g
+                        key={dim.name}
+                        opacity={sectorOpacity}
+                        className={cls}
+                        style={{ transition: "opacity 0.2s" }}
+                      >
+                        {/* (1) 奋笔疾书 hatching fill，clipPath 裁到精确扇区。 */}
+                        <g clipPath={`url(#sec-clip-${i})`}>
+                          <ScribbleHatchingFill
+                            sectorIndex={i}
+                            displayScore={displayScores[i]}
+                            strokePatternScore={strokePatternScore}
+                            color={dim.color}
+                          />
+                        </g>
+                        {/* (2) 精确 boundary stroke：同 sectorPath，无 fill。
+                            stroke = dim.color，1.4px，round join。 */}
+                        <path
+                          d={sectorPath(i, displayScores[i])}
+                          fill="none"
+                          stroke={dim.color}
+                          strokeWidth={1.4}
+                          strokeLinejoin="round"
+                        />
+                      </g>
+                    );
+                  })}
 
                   {/* Phase 1.5b connect 阶段：沿 8 个扇区外弧描整轮 outline。
                       不再是 polygon 直线连尖端 (会显成八边形)，而是 A (arc)
@@ -969,18 +1165,11 @@ export default function Home() {
                       dashed 扇区轮廓（满半径外缘 dashed 圆 + 8 条径向 dashed 线），
                       告诉用户"任何扇区都可按住" + 提供"画时感受分数"的参考线。
 
-                      Phase 1.5e fix #4：原条件含 `!pressing && touched.every(t=>!t)`,
-                      意味 user 开始 press 或 commit 任何一格后 hint 就消失——但
-                      liushu 反馈"画时虚线没了, 是需要的, 能帮感受分数"。改成
-                      整个 input 阶段（直到 8 维全 touched 进 reveal）都显示;
-                      press 期间 opacity 略降 (0.7 → 0.35) 让 dashed 不抢被 press
-                      扇区色块焦点, 但仍可见作 visual reference。 */}
+                      Phase 1.5g — dashed 调稀（liushu 反馈 "3 3" 点过密）：
+                      dasharray "3 3" → "2 6"（点更短 + 间隔更大），strokeWidth
+                      1.5 → 1.0 配合稀疏 gap 让点更细。视觉上 dashed 仍可见做
+                      reference, 但更克制不抢 wheel 焦点（原则 7）。 */}
                   {isEval && evalPhase === "input" && (
-                      // Phase 1.5d fix #3 — onboarding hint 视觉加重：
-                      // stroke 由 zinc-400/opacity 0.5 改 zinc-500/opacity 0.7，
-                      // strokeWidth 1 → 1.5，dasharray "3 5" → "3 3"。第一眼能看
-                      // 到这是 actionable 区域；保留 dashed 不抢 wheel 视觉
-                      //（克制 UI 原则 7）。
                       <g
                         className="onboarding-hint"
                         pointerEvents="none"
@@ -992,8 +1181,8 @@ export default function Home() {
                           r={MAX_RADIUS}
                           fill="none"
                           stroke="#71717a"
-                          strokeWidth={1.5}
-                          strokeDasharray="3 3"
+                          strokeWidth={1.0}
+                          strokeDasharray="2 6"
                           opacity={pressing ? 0.2 : 0.4}
                         />
                         {Array.from({ length: 8 }, (_, i) => {
@@ -1009,8 +1198,8 @@ export default function Home() {
                               x2={x.toFixed(3)}
                               y2={y.toFixed(3)}
                               stroke="#71717a"
-                              strokeWidth={1.5}
-                              strokeDasharray="3 3"
+                              strokeWidth={1.0}
+                              strokeDasharray="2 6"
                               opacity={pressing ? 0.2 : 0.4}
                             />
                           );
@@ -1130,7 +1319,7 @@ export default function Home() {
                     key="hint-ready"
                     className="fade-rise text-sm leading-relaxed text-zinc-500"
                   >
-                    准备好了——让它跑一程，看看颠不颠。
+                    准备好了——让它跑一程，看看路途平坦还是颠簸。
                   </p>
                 )}
               </div>
@@ -1218,7 +1407,7 @@ export default function Home() {
                 让它跑一跑
               </h1>
               <p className="mt-3 text-sm leading-relaxed text-zinc-500">
-                这是我现在的车。颠的地方，是我现在的失衡。
+                这是我现在的车。颠簸的地方，是我现在的失衡。
               </p>
             </header>
           ) : isReflect ? (
@@ -1227,7 +1416,7 @@ export default function Home() {
                 className="fade-rise text-3xl font-medium leading-snug tracking-tight text-zinc-900 md:text-4xl"
                 style={{ animationDelay: "1.2s" }}
               >
-                我人生这辆马车，颠在哪？
+                我人生这辆马车，路途平坦还是颠簸？
               </h1>
               <div
                 className="fade-rise flex flex-col gap-3"
