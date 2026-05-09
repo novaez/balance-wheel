@@ -1043,7 +1043,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
-      <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 pt-16 pb-10 md:flex-row md:items-start md:gap-12 md:py-16">
+      <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 pt-2 pb-6 md:flex-row md:items-start md:gap-12 md:py-16">
         {/* Left: wheel */}
         <section
           className={[
