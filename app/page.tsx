@@ -471,7 +471,8 @@ const PNG_HEIGHT = 1350;
 // 卡片内布局 (1080 x 1350, N4 sign-off 派 — 没顶部 header):
 //   y=70..150:    article 上 padding (无 header)
 //   y=400:        wheel 中心 (SVG drawImage, 半径 280, 区域 120..680)
-//   y=760..900:   presence 文字 (Canvas fillText, multi-line)
+//   y=800..:      presence 文字 (Canvas fillText, multi-line) — wheel 加 +120 gap
+//                 突出 "标题"语义 (vs 之前 760, 真机反馈后 polish v3)
 //   y=...:        commitment 文字 (Canvas fillText, optional)
 //   y=...:        sign-off 日期 (右对齐 "— 2026.05.09")
 //   y=1280:       watermark "wheel of life" (Canvas fillText)
