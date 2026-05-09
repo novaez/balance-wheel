@@ -390,7 +390,7 @@ function easeInOutQuad(x: number): number {
 // for the ground line + bob excursion, and outward horizontally to make room
 // for the 8 dimension labels that orbit the wheel.
 const VBOX_PAD = 20;
-const VBOX_RUN_EXTRA = 160;
+const VBOX_RUN_EXTRA = 60;
 const VBOX_LABEL_PAD = 56;
 const LABEL_RADIUS = MAX_RADIUS + 24;
 const GROUND_Y = MAX_RADIUS + 6;
