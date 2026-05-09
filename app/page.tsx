@@ -636,8 +636,9 @@ async function renderCardToPng(opts: {
       }
       presenceLines.push(presenceText.slice(i, i + presenceCharsPerLine));
     }
-    // N4 layout: wheel y=400 (R=280, bottom 680), presence y0=760 (wheel + 80 gap)
-    const presenceY0 = 760;
+    // N4 layout: wheel y=400 (R=280, bottom 680), presence y0=800 (wheel + 120 gap)
+    // — wheel 承担"标题"语义需要 breathing room, DOM 加 mb-4 同步到 PNG +40 gap
+    const presenceY0 = 800;
     const presenceLineHeight = presenceFontSize * 1.35;
     presenceLines.forEach((line, idx) => {
       ctx.fillText(line, PNG_WIDTH / 2, presenceY0 + idx * presenceLineHeight);
@@ -1228,12 +1229,14 @@ export default function Home() {
             aria-label="留印卡片"
           >
             <div className="flex flex-col items-center gap-6">
-              {/* Mini wheel — 200px N4 layout (vs N7 的 190px) */}
+              {/* Mini wheel — 200px N4 layout. mb-4 加在 flex gap-6 之外让
+                  wheel ↓ presence 间距 effective 40px (vs 其它元素 24px) — wheel
+                  在 N4 没 header 时承担"标题"语义, 需要额外 breathing room 突出。 */}
               <svg
                 viewBox={`${-MAX_RADIUS - VBOX_PAD} ${-MAX_RADIUS - VBOX_PAD} ${
                   (MAX_RADIUS + VBOX_PAD) * 2
                 } ${(MAX_RADIUS + VBOX_PAD) * 2}`}
-                className="h-auto w-full max-w-[200px]"
+                className="h-auto w-full max-w-[200px] mb-4"
                 role="img"
                 aria-label="生命之轮快照"
               >
