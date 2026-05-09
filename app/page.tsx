@@ -1048,9 +1048,10 @@ export default function Home() {
         <section
           className={[
             "flex w-full flex-col items-center",
+            // Phase 1.5y — mobile sticky wheel 取消 (微信浏览器 viewport 受限,
+            // sticky 占据 ~50% 高度让 button / textarea 挤出 fold).
+            // Desktop 保留 sticky 让 wheel 始终参考可见.
             "md:w-1/2 md:sticky md:top-10",
-            isEval ? "sticky top-0 z-10 bg-zinc-50/95 pt-4 pb-2 backdrop-blur border-b border-zinc-200" : "",
-            "md:bg-transparent md:pt-0 md:pb-0 md:backdrop-blur-none",
           ]
             .filter(Boolean)
             .join(" ")}
@@ -1061,7 +1062,7 @@ export default function Home() {
           {/* Wheel SVG — Phase 1.5 装上 pointer 事件做 1st person 推扇区。
               touch-action: none 阻止 mobile 默认 pull-to-refresh / page scroll
               在 wheel 区域上拦截 pointer move（关键 mobile fix）。 */}
-          <div className="w-full max-w-[340px] md:max-w-[440px]">
+          <div className="w-full max-w-[280px] md:max-w-[440px]">
             <svg
               ref={wheelSvgRef}
               viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
