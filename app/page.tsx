@@ -1345,30 +1345,31 @@ export default function Home() {
                 <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
                   生命之轮
                 </h1>
-                {/* Phase 1.5 — 入口 framing block。22 字 hook 显眼锚 "圆心 = 0
-                    / 外缘 = 10 / 马车隐喻"；详情段落收在 <details> 里默认
-                    收起，遵守原则 7 克制 UI——hook 不抢 wheel 视觉，需要更多
-                    引导的用户主动展开。 */}
-                <p className="mt-3 text-base leading-relaxed text-zinc-600">
-                  圆心 = 0，外缘 = 10。画出此刻你这辆人生马车的车轮。
-                </p>
-                <details className="mt-2 text-sm leading-relaxed text-zinc-500">
-                  <summary className="cursor-pointer list-none text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline [&::-webkit-details-marker]:hidden">
-                    完整说明 / 怎么玩
-                  </summary>
-                  {/* 经典 wheel of life 文案（润色版）：保留 8 领域 / 满意度 /
-                      圆心 0 外缘 10 / 重新画出此刻 / 马车隐喻 / 未来方向 essence。 */}
-                  <div className="mt-3 space-y-3 text-zinc-600">
-                    <p>
-                      生命之轮的 8 个区块代表你生命中的 8 个不同领域。请为你此时此刻这些领域的满意程度打分——圆心代表 0
-                      分，外缘代表 10 分。分数越低，外缘越靠近圆心。通过你的分数，重新画出此刻的生命之轮。
+                {/* Phase 1.5x — framing hook + collapsible 只在 input 阶段显示.
+                    mobile (微信浏览器) viewport 受限, ready 阶段挤掉按钮; user
+                    完成 8 press 后已 figured out 不需要再看 framing 引导. */}
+                {evalPhase === "input" && (
+                  <>
+                    <p className="mt-3 text-base leading-relaxed text-zinc-600">
+                      圆心 = 0，外缘 = 10。画出此刻你这辆人生马车的车轮。
                     </p>
-                    <p>
-                      生命之轮帮你看到不同领域目前正在如何影响你的生活。想想看：如果你人生的马车就在这一车轮上前进，你的路途会有多平坦
-                      / 颠簸？生命之轮还会提供给我们一个未来工作的方向。
-                    </p>
-                  </div>
-                </details>
+                    <details className="mt-2 text-sm leading-relaxed text-zinc-500">
+                      <summary className="cursor-pointer list-none text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline [&::-webkit-details-marker]:hidden">
+                        完整说明 / 怎么玩
+                      </summary>
+                      <div className="mt-3 space-y-3 text-zinc-600">
+                        <p>
+                          生命之轮的 8 个区块代表你生命中的 8 个不同领域。请为你此时此刻这些领域的满意程度打分——圆心代表 0
+                          分，外缘代表 10 分。分数越低，外缘越靠近圆心。通过你的分数，重新画出此刻的生命之轮。
+                        </p>
+                        <p>
+                          生命之轮帮你看到不同领域目前正在如何影响你的生活。想想看：如果你人生的马车就在这一车轮上前进，你的路途会有多平坦
+                          / 颠簸？生命之轮还会提供给我们一个未来工作的方向。
+                        </p>
+                      </div>
+                    </details>
+                  </>
+                )}
               </header>
 
               {/* 操作提示 — 跟 framing 区分开（一个是"为什么"，一个是"怎么做"）。
