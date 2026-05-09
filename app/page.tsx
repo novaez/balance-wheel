@@ -1043,26 +1043,25 @@ export default function Home() {
 
   return (
     <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
-      <main className="mx-auto flex max-w-6xl flex-col gap-4 px-6 pt-4 pb-6 md:flex-row md:items-start md:gap-12 md:py-16">
+      <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 pt-16 pb-10 md:flex-row md:items-start md:gap-12 md:py-16">
         {/* Left: wheel */}
         <section
           className={[
             "flex w-full flex-col items-center",
-            // Phase 1.5y — mobile sticky wheel 取消 (微信浏览器 viewport 受限,
-            // sticky 占据 ~50% 高度让 button / textarea 挤出 fold).
-            // Desktop 保留 sticky 让 wheel 始终参考可见.
             "md:w-1/2 md:sticky md:top-10",
+            isEval ? "sticky top-0 z-10 bg-zinc-50/95 pt-4 pb-2 backdrop-blur border-b border-zinc-200" : "",
+            "md:bg-transparent md:pt-0 md:pb-0 md:backdrop-blur-none",
           ]
             .filter(Boolean)
             .join(" ")}
         >
-          <h2 className="mb-2 self-start text-sm font-medium tracking-wide text-zinc-500 md:mb-6">
+          <h2 className="mb-6 self-start text-sm font-medium tracking-wide text-zinc-500">
             {isEval ? "我人生的马车" : "我人生的马车"}
           </h2>
           {/* Wheel SVG — Phase 1.5 装上 pointer 事件做 1st person 推扇区。
               touch-action: none 阻止 mobile 默认 pull-to-refresh / page scroll
               在 wheel 区域上拦截 pointer move（关键 mobile fix）。 */}
-          <div className="w-full max-w-[280px] md:max-w-[440px]">
+          <div className="w-full max-w-[340px] md:max-w-[440px]">
             <svg
               ref={wheelSvgRef}
               viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
@@ -1342,41 +1341,40 @@ export default function Home() {
         <section className="w-full md:w-1/2">
           {isEval ? (
             <>
-              <header className="mb-3 md:mb-6">
+              <header className="mb-6">
                 <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
                   生命之轮
                 </h1>
-                {/* Phase 1.5x — framing hook + collapsible 只在 input 阶段显示.
-                    mobile (微信浏览器) viewport 受限, ready 阶段挤掉按钮; user
-                    完成 8 press 后已 figured out 不需要再看 framing 引导. */}
-                {evalPhase === "input" && (
-                  <>
-                    <p className="mt-3 text-base leading-relaxed text-zinc-600">
-                      圆心 = 0，外缘 = 10。画出此刻你这辆人生马车的车轮。
+                {/* Phase 1.5 — 入口 framing block。22 字 hook 显眼锚 "圆心 = 0
+                    / 外缘 = 10 / 马车隐喻"；详情段落收在 <details> 里默认
+                    收起，遵守原则 7 克制 UI——hook 不抢 wheel 视觉，需要更多
+                    引导的用户主动展开。 */}
+                <p className="mt-3 text-base leading-relaxed text-zinc-600">
+                  圆心 = 0，外缘 = 10。画出此刻你这辆人生马车的车轮。
+                </p>
+                <details className="mt-2 text-sm leading-relaxed text-zinc-500">
+                  <summary className="cursor-pointer list-none text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline [&::-webkit-details-marker]:hidden">
+                    完整说明 / 怎么玩
+                  </summary>
+                  {/* 经典 wheel of life 文案（润色版）：保留 8 领域 / 满意度 /
+                      圆心 0 外缘 10 / 重新画出此刻 / 马车隐喻 / 未来方向 essence。 */}
+                  <div className="mt-3 space-y-3 text-zinc-600">
+                    <p>
+                      生命之轮的 8 个区块代表你生命中的 8 个不同领域。请为你此时此刻这些领域的满意程度打分——圆心代表 0
+                      分，外缘代表 10 分。分数越低，外缘越靠近圆心。通过你的分数，重新画出此刻的生命之轮。
                     </p>
-                    <details className="mt-2 text-sm leading-relaxed text-zinc-500">
-                      <summary className="cursor-pointer list-none text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline [&::-webkit-details-marker]:hidden">
-                        完整说明 / 怎么玩
-                      </summary>
-                      <div className="mt-3 space-y-3 text-zinc-600">
-                        <p>
-                          生命之轮的 8 个区块代表你生命中的 8 个不同领域。请为你此时此刻这些领域的满意程度打分——圆心代表 0
-                          分，外缘代表 10 分。分数越低，外缘越靠近圆心。通过你的分数，重新画出此刻的生命之轮。
-                        </p>
-                        <p>
-                          生命之轮帮你看到不同领域目前正在如何影响你的生活。想想看：如果你人生的马车就在这一车轮上前进，你的路途会有多平坦
-                          / 颠簸？生命之轮还会提供给我们一个未来工作的方向。
-                        </p>
-                      </div>
-                    </details>
-                  </>
-                )}
+                    <p>
+                      生命之轮帮你看到不同领域目前正在如何影响你的生活。想想看：如果你人生的马车就在这一车轮上前进，你的路途会有多平坦
+                      / 颠簸？生命之轮还会提供给我们一个未来工作的方向。
+                    </p>
+                  </div>
+                </details>
               </header>
 
               {/* 操作提示 — 跟 framing 区分开（一个是"为什么"，一个是"怎么做"）。
                   随 evalPhase 变文案：input 期间提示如何 press；touched 全满后
                   reveal 阶段切到"看到你的车"叙事。 */}
-              <div className="mb-4 min-h-[2rem] md:mb-8 md:min-h-[3rem]">
+              <div className="mb-8 min-h-[3rem]">
                 {evalPhase === "input" && (
                   <p
                     key="hint-input"
@@ -1502,7 +1500,7 @@ export default function Home() {
           ) : isReflect ? (
             <div className="flex flex-col gap-10 pt-2">
               <h1
-                className="fade-rise text-2xl font-medium leading-snug tracking-tight text-zinc-900 md:text-4xl"
+                className="fade-rise text-3xl font-medium leading-snug tracking-tight text-zinc-900 md:text-4xl"
                 style={{ animationDelay: "1.2s" }}
               >
                 我人生这辆马车，路途平坦还是颠簸？
