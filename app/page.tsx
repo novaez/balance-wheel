@@ -30,7 +30,9 @@ const MIN_SCORE = 0;
 const MAX_SCORE = 10;
 const PRESENCE_MAX_LEN = 240;
 const COMMITMENT_MAX_LEN = 80;
-const CAPTION_MAX_LEN = 80;
+
+// 极简日期款 (Phase 1.6 N7 派) — done 阶段卡片用中文短星期 ("周日"-"周六")
+const WEEKDAY_NAMES_ZH_SHORT = ["日", "一", "二", "三", "四", "五", "六"] as const;
 
 type Scores = number[]; // length 8, each 0..10 integer
 type Presence = { text: string; at: string };
@@ -44,7 +46,6 @@ type StoredState = {
   scores: Scores;
   presence: Presence | null;
   commitment: Commitment | null;
-  caption: string;
 };
 
 function loadState(): StoredState {
@@ -53,7 +54,6 @@ function loadState(): StoredState {
       scores: defaultScores(),
       presence: null,
       commitment: null,
-      caption: "",
     };
   }
   try {
@@ -65,13 +65,14 @@ function loadState(): StoredState {
         scores: defaultScores(),
         presence: null,
         commitment: null,
-        caption: "",
       };
+    // Phase 1.6 — caption 字段在 v3 短暂引入又删除（自存 reframe 边际价值降，
+    // 见 vault 决策记录 2026-05-09）。老数据里如果有 caption 字段，JSON.parse
+    // 会解析出来但下面的解构忽略它——unknown field 自然丢弃，不需迁移逻辑。
     const parsed = JSON.parse(raw) as {
       scores?: unknown;
       presence?: unknown;
       commitment?: unknown;
-      caption?: unknown;
     };
     // Scores
     let scores: Scores;
@@ -112,18 +113,12 @@ function loadState(): StoredState {
           : new Date().toISOString();
       if (text) commitment = { text: text.slice(0, COMMITMENT_MAX_LEN), at };
     }
-    // Caption (v3 field). Old data without it loads as empty string.
-    const caption =
-      typeof parsed.caption === "string"
-        ? parsed.caption.slice(0, CAPTION_MAX_LEN)
-        : "";
-    return { scores, presence, commitment, caption };
+    return { scores, presence, commitment };
   } catch {
     return {
       scores: defaultScores(),
       presence: null,
       commitment: null,
-      caption: "",
     };
   }
 }
@@ -131,8 +126,7 @@ function loadState(): StoredState {
 function saveState(
   scores: Scores,
   presence: Presence | null,
-  commitment: Commitment | null,
-  caption: string
+  commitment: Commitment | null
 ) {
   if (typeof window === "undefined") return;
   try {
@@ -142,7 +136,6 @@ function saveState(
         scores,
         presence,
         commitment,
-        caption,
         updatedAt: new Date().toISOString(),
       })
     );
@@ -455,14 +448,260 @@ type Pressing = {
   value: number; // 0..10 integer, what would commit if release now
 } | null;
 
+// =============================================================================
+// Phase 1.6 — Canvas 渲染 PNG (子任务 D, Mixed strategy D — v2)
+// =============================================================================
+//
+// 策略 (D): wheel 部分走 SVG-as-Image (复用 ScribbleHatchingFill 几百行 hatching
+// 算法), 文字层用 Canvas 2D fillText 直接画在 main page 上下文。
+//
+// 为什么 v2 切到 Mixed: 原 v1 (B') 把整张卡片打包成 SVG 序列化, 通过 <img>
+// 加载到 Canvas — SVG 在 isolated origin 跑, document 的 webfont (next/font
+// 自托管的 Ma Shan Zheng / Caveat) 拿不到, PNG 输出回落到系统楷体, 视觉跟 DOM
+// 卡片预览不一致, 用户截图存档看到"字体没了"。
+//
+// Mixed 解法: wheel SVG 不含任何 text, drawImage 到 canvas 后, 在 main page
+// font registry 下 ctx.fillText 画文字 (await document.fonts.ready 保证 webfont
+// 已加载) — Canvas 2D 跟 page 共享 font registry, webfont 直接 work, PNG 跟
+// DOM 视觉一致。
+
+// PNG 输出尺寸: 1080×1350 = 4:5 portrait, mobile share sheet 友好,
+// IG / 小红书 portrait 卡片标准比例。
+const PNG_WIDTH = 1080;
+const PNG_HEIGHT = 1350;
+
+// 构建 wheel-only SVG (无 text, 文字层由 Canvas 2D fillText 后画)。
+// 卡片内布局 (1080 x 1350):
+//   y=90:     中文日期 header (Canvas fillText)
+//   y=130:    分隔线 (Canvas stroke)
+//   y=510:    wheel 中心 (SVG drawImage, 半径 280)
+//   y=920..:  presence 文字 (Canvas fillText, multi-line)
+//   y=...:    commitment 文字 (Canvas fillText, optional)
+//   y=1280:   watermark "wheel of life" (Canvas fillText)
+function buildWheelSvg({ scores }: { scores: Scores }): string {
+  const wheelCx = PNG_WIDTH / 2;
+  const wheelCy = 510;
+  const wheelR = 280; // DOM mini wheel 190px → PNG 280px 让视觉饱满
+  const wheelScale = wheelR / MAX_RADIUS;
+  const wheelGroupTransform = `translate(${wheelCx} ${wheelCy}) scale(${wheelScale.toFixed(
+    4
+  )})`;
+
+  // outline dashed circle
+  const outline = `<circle cx="0" cy="0" r="${MAX_RADIUS}" fill="none" stroke="#e4e4e7" stroke-width="1" stroke-dasharray="2 4" />`;
+
+  // 8 个扇区: clipPath + hatching + boundary stroke (复用 ScribbleHatchingFill 算法)
+  const defs: string[] = [];
+  const sectors: string[] = [];
+  for (let i = 0; i < DIMENSIONS.length; i++) {
+    const dim = DIMENSIONS[i];
+    const s = scores[i] ?? DEFAULT_SCORE;
+    const path = sectorPath(i, s);
+    defs.push(
+      `<clipPath id="png-sec-${i}"><path d="${path}" /></clipPath>`
+    );
+    if (s <= 0) {
+      // sector 完全 collapse, 不绘制 hatching / boundary
+      continue;
+    }
+    // hatching strokes — deterministic seed (mulberry32 + hashSeed) 跟 DOM 版本一致
+    const r = sectorRadius(s);
+    const start = -90 + i * SECTOR_DEG;
+    const sectorMidDeg = start + SECTOR_DEG / 2;
+    const baseStrokeDeg = sectorMidDeg + 70;
+    const N = Math.max(22, Math.round(22 + s * 5.8));
+    const rng = mulberry32(hashSeed(i, 0xd2, N));
+    const strokes: string[] = [];
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    for (let k = 0; k < N; k++) {
+      const tR = Math.sqrt(rng());
+      const r0 = tR * r * 0.95;
+      const theta0Deg = start + rng() * SECTOR_DEG;
+      const theta0 = toRad(theta0Deg);
+      const x0 = Math.cos(theta0) * r0;
+      const y0 = Math.sin(theta0) * r0;
+      const strokeAngleDeg = baseStrokeDeg + (rng() - 0.5) * 50;
+      const strokeAngle = toRad(strokeAngleDeg);
+      const len = 10 + rng() * (rng() > 0.7 ? 50 : 25);
+      const half = len / 2;
+      const x1 = x0 - Math.cos(strokeAngle) * half;
+      const y1 = y0 - Math.sin(strokeAngle) * half;
+      const x2 = x0 + Math.cos(strokeAngle) * half;
+      const y2 = y0 + Math.sin(strokeAngle) * half;
+      const sw = 1.0 + rng() * 1.6;
+      const lightDelta = (rng() - 0.5) * 0.24;
+      const strokeColor = jitterColor(dim.color, lightDelta);
+      const op = 0.5 + rng() * 0.35;
+      strokes.push(
+        `<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(
+          2
+        )}" y2="${y2.toFixed(2)}" stroke="${strokeColor}" stroke-width="${sw.toFixed(
+          2
+        )}" stroke-linecap="round" opacity="${op.toFixed(2)}" />`
+      );
+    }
+    sectors.push(
+      `<g clip-path="url(#png-sec-${i})">${strokes.join("")}</g>` +
+        `<path d="${path}" fill="none" stroke="${dim.color}" stroke-width="1.4" stroke-linejoin="round" />`
+    );
+  }
+
+  // 中心点 dot
+  const centerDot = `<circle cx="0" cy="0" r="2.5" fill="#27272a" />`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${PNG_WIDTH}" height="${PNG_HEIGHT}" viewBox="0 0 ${PNG_WIDTH} ${PNG_HEIGHT}">
+  <defs>${defs.join("")}</defs>
+  <g transform="${wheelGroupTransform}">
+    ${outline}
+    ${sectors.join("")}
+    ${centerDot}
+  </g>
+</svg>`;
+}
+
+// Mixed strategy: wheel SVG → Image → drawImage 后用 Canvas 2D fillText 画文字
+// (date header / divider / presence / commitment / watermark)。文字用 webfont
+// (Ma Shan Zheng / Caveat) 跟 DOM 一致——await document.fonts.ready 保证字体已
+// 加载, Canvas 2D 跟 page 共享 font registry。
+async function renderCardToPng(opts: {
+  presenceText: string;
+  commitmentText: string | null;
+  dateLabel: string;
+  scores: Scores;
+}): Promise<Blob> {
+  const { presenceText, commitmentText, dateLabel, scores } = opts;
+
+  // 等 webfont 加载——这步是 PNG 用 webfont 不 fallback 的关键 (跟旧版 B' 不同,
+  // 旧版在 isolated origin 拿不到 webfont, 必须 fallback 到 system 楷体)。
+  if (typeof document !== "undefined" && document.fonts && document.fonts.ready) {
+    try {
+      await document.fonts.ready;
+    } catch {
+      // ignore
+    }
+  }
+
+  // Step 1: render wheel-only SVG → Image
+  const wheelSvg = buildWheelSvg({ scores });
+  const svgBlob = new Blob([wheelSvg], { type: "image/svg+xml;charset=utf-8" });
+  const svgUrl = URL.createObjectURL(svgBlob);
+
+  try {
+    const wheelImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = (e) => reject(e);
+      im.src = svgUrl;
+    });
+
+    // Step 2: composite on canvas — wheel image + text overlay
+    const canvas = document.createElement("canvas");
+    canvas.width = PNG_WIDTH;
+    canvas.height = PNG_HEIGHT;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas 2D context unavailable");
+
+    // 白底
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, PNG_WIDTH, PNG_HEIGHT);
+
+    // wheel SVG 直接绘到 PNG 同尺寸 (svg viewBox 跟 PNG 1:1)
+    ctx.drawImage(wheelImg, 0, 0, PNG_WIDTH, PNG_HEIGHT);
+
+    // 文字层 — main page font registry, webfont 已 ready
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+
+    // 中文日期 header (y=90) — Ma Shan Zheng webfont (跟 DOM 一致)
+    ctx.font = '34px "Ma Shan Zheng", "STKaiti", "KaiTi", serif';
+    ctx.fillStyle = "#71717a";
+    ctx.fillText(dateLabel, PNG_WIDTH / 2, 90);
+
+    // Divider line (y=130) — 浅灰
+    ctx.beginPath();
+    ctx.moveTo(200, 130);
+    ctx.lineTo(PNG_WIDTH - 200, 130);
+    ctx.strokeStyle = "#f4f4f5";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Presence (主) — 字号自适应 + multi-line wrap + cap to prevent overflow
+    const presenceLen = presenceText.length;
+    const presenceFontSize =
+      presenceLen <= 14 ? 64 :
+      presenceLen <= 30 ? 52 :
+      presenceLen <= 70 ? 44 :
+      presenceLen <= 130 ? 36 :
+      28;
+    ctx.font = `${presenceFontSize}px "Ma Shan Zheng", "STKaiti", "KaiTi", serif`;
+    ctx.fillStyle = "#18181b";
+    const presenceCharsPerLine = Math.max(
+      8,
+      Math.floor((PNG_WIDTH - 140) / (presenceFontSize * 0.95))
+    );
+    const MAX_PRESENCE_LINES = commitmentText ? 5 : 7;
+    const presenceLines: string[] = [];
+    for (let i = 0; i < presenceText.length; i += presenceCharsPerLine) {
+      if (presenceLines.length >= MAX_PRESENCE_LINES) {
+        const last = presenceLines[presenceLines.length - 1];
+        if (last && !last.endsWith("…")) {
+          presenceLines[presenceLines.length - 1] = last.slice(0, -1) + "…";
+        }
+        break;
+      }
+      presenceLines.push(presenceText.slice(i, i + presenceCharsPerLine));
+    }
+    const presenceY0 = 920;
+    const presenceLineHeight = presenceFontSize * 1.35;
+    presenceLines.forEach((line, idx) => {
+      ctx.fillText(line, PNG_WIDTH / 2, presenceY0 + idx * presenceLineHeight);
+    });
+
+    // Commitment (副, optional)
+    if (commitmentText) {
+      const commitmentY =
+        presenceY0 + presenceLines.length * presenceLineHeight + 50;
+      ctx.font = '32px "Ma Shan Zheng", "STKaiti", "KaiTi", serif';
+      ctx.fillStyle = "#71717a";
+      ctx.fillText(`— ${commitmentText}`, PNG_WIDTH / 2, commitmentY);
+    }
+
+    // Watermark — Caveat (Latin handwriting webfont)
+    ctx.font = '28px "Caveat", cursive';
+    ctx.fillStyle = "#a1a1aa";
+    ctx.fillText("wheel of life", PNG_WIDTH / 2, PNG_HEIGHT - 70);
+
+    // Step 3: canvas → PNG blob
+    const pngBlob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/png", 1)
+    );
+    if (!pngBlob) throw new Error("Canvas toBlob returned null");
+    return pngBlob;
+  } finally {
+    URL.revokeObjectURL(svgUrl);
+  }
+}
+
+function formatDateYMD(at: string): string {
+  const d = new Date(at);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function formatDateDots(at: string): string {
+  const d = new Date(at);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}.${mm}.${dd}`;
+}
+
 export default function Home() {
   const [scores, setScores] = useState<Scores>(defaultScores);
   const [presence, setPresence] = useState<Presence | null>(null);
   const [commitment, setCommitment] = useState<Commitment | null>(null);
-  // Stage 6 — caption is the user-editable line on the souvenir card. Lives
-  // alongside presence/commit in localStorage but is reset on each new
-  // presence cycle so each lap around the arc gets a fresh card line.
-  const [caption, setCaption] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [mode, setMode] = useState<Mode>("eval");
   const [progress, setProgress] = useState(0);
@@ -498,7 +737,6 @@ export default function Home() {
     setScores(s.scores);
     setPresence(s.presence);
     setCommitment(s.commitment);
-    setCaption(s.caption);
     setHydrated(true);
   }, []);
 
@@ -512,7 +750,6 @@ export default function Home() {
         setScores(s.scores);
         setPresence(s.presence);
         setCommitment(s.commitment);
-        setCaption(s.caption);
       }
     };
     window.addEventListener("pageshow", onPageShow);
@@ -522,8 +759,8 @@ export default function Home() {
   // Persist whenever any persisted field changes, but only after hydration.
   useEffect(() => {
     if (!hydrated) return;
-    saveState(scores, presence, commitment, caption);
-  }, [scores, presence, commitment, caption, hydrated]);
+    saveState(scores, presence, commitment);
+  }, [scores, presence, commitment, hydrated]);
 
   // Drive a single 5-second ride; rAF self-stops at progress=1 so the wheel
   // rests at its final pose, then auto-advances to the reflect stage so the
@@ -724,6 +961,78 @@ export default function Home() {
     }
   }, []);
 
+  // Phase 1.6 子任务 C — 统一"分享"按钮 + Web Share API
+  // mobile (canShare files): navigator.share → share sheet → "保存到相册"
+  // desktop (无 share API 或不支持 files): fallback <a download> 下载到本地
+  // AbortError (用户取消 share sheet) 静默吞掉, 不当 error 处理。
+  const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const handleShare = useCallback(async () => {
+    if (!presence) return;
+    if (sharing) return;
+    setSharing(true);
+    setShareError(null);
+    try {
+      const dateD = new Date(presence.at);
+      const weekday = WEEKDAY_NAMES_ZH_SHORT[dateD.getDay()];
+      const dateLabel = `${dateD.getFullYear()} 年 ${dateD.getMonth() + 1} 月 ${dateD.getDate()} 日 · 周${weekday}`;
+      const pngBlob = await renderCardToPng({
+        presenceText: presence.text,
+        commitmentText: commitment ? commitment.text : null,
+        dateLabel,
+        scores,
+      });
+      const dateYmd = formatDateYMD(presence.at);
+      const filename = `wheel-of-life-${dateYmd}.png`;
+      const dateDots = formatDateDots(presence.at);
+      const shareTitle = `我的生命之轮 ${dateDots}`;
+
+      const pngFile = new File([pngBlob], filename, { type: "image/png" });
+      const canShareFiles =
+        typeof navigator !== "undefined" &&
+        typeof navigator.canShare === "function" &&
+        navigator.canShare({ files: [pngFile] });
+
+      if (canShareFiles) {
+        try {
+          await navigator.share({
+            files: [pngFile],
+            title: shareTitle,
+            text: shareTitle, // iOS share sheet subtitle 不空 (review C3)
+          });
+        } catch (err) {
+          // 用户在 share sheet 取消是 AbortError, 是正常路径不报错
+          const name = (err as { name?: string })?.name;
+          if (name !== "AbortError") {
+            console.warn("navigator.share failed:", err);
+            setShareError("分享未完成，请再试一次");
+          }
+        }
+      } else {
+        // desktop fallback: programmatic <a download> click. try/finally 保证
+        // blob URL 一定 revoke (review B2 — appendChild/click 抛错时也不泄漏)
+        const url = URL.createObjectURL(pngBlob);
+        try {
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } finally {
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+      }
+    } catch (err) {
+      // review B1 — silent failure 升级到 user-visible error。Canvas toBlob 返回
+      // null / Image load fail / 字体未加载等都走这里, 用户知道点了按钮但失败了
+      console.warn("share/render failed:", err);
+      setShareError("生成失败，请再试一次");
+    } finally {
+      setSharing(false);
+    }
+  }, [presence, commitment, scores, sharing]);
+
   const handleBack = useCallback(() => {
     setMode("eval");
     // Phase 1.5n — 不再 reset touched / scores. user "回去调整"时保留之前
@@ -742,9 +1051,6 @@ export default function Home() {
     setPresenceDraft("");
     setCommitDraft("");
     setPresencePhase("input");
-    // Each new lap through presence gets a blank caption — the card line is
-    // bound to the freshly-witnessed presence text, not carried over.
-    setCaption("");
     setMode("presence");
   }, []);
 
@@ -917,21 +1223,34 @@ export default function Home() {
       <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
         <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-6 px-6 py-12">
           {/* Souvenir card — the only emotional outlet of the UI (圆桌 #1 #7).
-              Single warm artifact: wheel snapshot + handwritten presence + soft
-              commit + user-owned caption + watermark. Designed to be screenshot-
-              shared as-is; no download / share APIs (privacy-first). */}
+              Phase 1.6 reframe: 极简日期款 (N7 派). 顶部一行中文日期 header
+              ("2026 年 5 月 9 日 · 周X") 锚定 "这是某天的快照", 不堆装订环 /
+              大日期数字等装饰 — 看日历感压到最轻, wheel + 文字仍占视觉主导。 */}
           <article
-            className="fade-rise relative w-full overflow-hidden rounded-2xl border border-zinc-200 bg-gradient-to-br from-amber-50/40 via-white to-white px-7 py-9 shadow-md"
+            className="fade-rise relative w-full overflow-hidden rounded-md bg-white px-7 py-9 shadow-md"
             style={{ animationDelay: "0.1s" }}
             aria-label="留印卡片"
           >
-            <div className="flex flex-col items-center gap-6">
-              {/* Mini wheel — clean snapshot, no ground / labels / bob. */}
+            {/* 中文日期 header — "2026 年 5 月 9 日 · 周X", 一行小字锚定时间。
+                mb-2 (vs 原 mb-6): wheel 视觉重心因高分扇区偏上, 上方 spacing
+                需要非对称缩短防止"漂浮感", 配合下方 gap-8 让 wheel ↔ presence
+                通气 (liushu mobile 真机反馈 mb-3 还差"一丢丢")。 */}
+            <div className="mb-2 border-b border-zinc-100 pb-3 text-center">
+              <p className="font-zh-hand text-base tracking-[0.15em] text-zinc-500">
+                {(() => {
+                  const d = new Date(presence.at);
+                  const weekday = WEEKDAY_NAMES_ZH_SHORT[d.getDay()];
+                  return `${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日 · 周${weekday}`;
+                })()}
+              </p>
+            </div>
+            <div className="flex flex-col items-center gap-8">
+              {/* Mini wheel — clean snapshot, no ground / labels / bob. 190px 适配 N7 layout */}
               <svg
                 viewBox={`${-MAX_RADIUS - VBOX_PAD} ${-MAX_RADIUS - VBOX_PAD} ${
                   (MAX_RADIUS + VBOX_PAD) * 2
                 } ${(MAX_RADIUS + VBOX_PAD) * 2}`}
-                className="h-auto w-full max-w-[200px]"
+                className="h-auto w-full max-w-[190px]"
                 role="img"
                 aria-label="生命之轮快照"
               >
@@ -947,8 +1266,7 @@ export default function Home() {
                 {/* Phase 1.5g — souvenir card 的 mini wheel 也用 hatching fill,
                     跟 main wheel 视觉一致。done 阶段不存在 press, 所以
                     strokePatternScore = scores[i]。clipPath id 加 -snap 后缀
-                    避免跟 main wheel 的 sec-clip-i 冲突（同一 DOM 同时存在
-                    会指向 main wheel 的 displayScores 路径）。 */}
+                    避免跟 main wheel 的 sec-clip-i 冲突。 */}
                 <defs>
                   {DIMENSIONS.map((_, i) => (
                     <clipPath key={`snap-clip-${i}`} id={`snap-clip-${i}`}>
@@ -981,53 +1299,57 @@ export default function Home() {
                 <circle cx={0} cy={0} r={2.5} fill="#27272a" />
               </svg>
 
-              {/* Presence — main voice, handwritten, large. */}
-              <p className="font-zh-hand text-center text-3xl leading-snug text-zinc-900 md:text-4xl">
+              {/* Presence — main voice, handwritten. text-2xl md:text-3xl 适配 N7 layout */}
+              <p className="font-zh-hand text-center text-2xl leading-snug text-zinc-900 md:text-3xl">
                 {presence.text}
               </p>
 
               {/* Commitment — optional, sits under presence as a soft echo. */}
               {commitment && (
-                <p className="font-zh-hand text-center text-xl leading-relaxed text-zinc-500 md:text-2xl">
+                <p className="font-zh-hand text-center text-base leading-relaxed text-zinc-500 md:text-lg">
                   — {commitment.text}
                 </p>
               )}
 
-              {/* Caption — user writes their own line. The empty input itself
-                  is the invitation; on screenshot, only the typed text shows. */}
-              <div className="w-full border-t border-dashed border-zinc-200 pt-5">
-                <input
-                  type="text"
-                  value={caption}
-                  onChange={(e) =>
-                    setCaption(e.target.value.slice(0, CAPTION_MAX_LEN))
-                  }
-                  onBlur={() => {
-                    // Mobile soft-keyboard dismiss leaves the page scrolled
-                    // past the card; pull viewport back to the top after the
-                    // keyboard collapse animation settles.
-                    if (typeof window !== "undefined") {
-                      setTimeout(() => {
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }, 100);
-                    }
-                  }}
-                  placeholder="给自己写一句话…"
-                  maxLength={CAPTION_MAX_LEN}
-                  className="font-zh-hand w-full bg-transparent text-center text-xl leading-relaxed text-zinc-700 placeholder:text-zinc-300 focus:outline-none md:text-2xl"
-                  aria-label="给自己写一句话"
-                />
-              </div>
-
-              {/* Watermark — virality hook. Latin handwriting echoes the
-                  Chinese script above; subtle but unmistakable. */}
+              {/* Watermark — Latin handwriting echoes the Chinese script above. */}
               <p className="font-en-hand mt-1 text-sm tracking-wide text-zinc-400">
                 wheel of life
               </p>
             </div>
           </article>
 
-          <p className="text-xs text-zinc-400">想分享，可以截屏发给在乎的人。</p>
+          {/* Affordance — Phase 1.6 reframe v3.
+              主推 framing "存到你的相册" 跟按钮重复, 删主推一行让按钮承担;
+              留次推+stealth 一行作为分享语义 hint, 教练入口用 "也可以...或..."
+              降级成 alternative — 没教练的用户语法上自然 skip 后半句, 有教练
+              的能 catch. */}
+          <p className="text-sm text-zinc-500">
+            也可以发给在乎的人，或带给你的教练探索
+          </p>
+
+          {/* Phase 1.6 子任务 C — 统一"存到相册"按钮 (Web Share API + download
+              fallback)。文案选 "存到相册" 跟自存主轴一致 ("分享"暗示发给别人,
+              跟 reframe 错位)。mobile 触发 share sheet 含相册选项, desktop 走
+              <a download> 下载到 Downloads。 */}
+          <div className="flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={handleShare}
+              disabled={sharing}
+              className="rounded-full border border-zinc-300 bg-white px-6 py-2.5 text-sm text-zinc-700 shadow-sm transition-colors hover:border-zinc-400 hover:text-zinc-900 disabled:opacity-60"
+            >
+              {sharing ? "生成中…" : "存到相册"}
+            </button>
+            {shareError && (
+              <p
+                className="text-xs text-red-500"
+                role="alert"
+                aria-live="polite"
+              >
+                {shareError}
+              </p>
+            )}
+          </div>
 
           <button
             type="button"
