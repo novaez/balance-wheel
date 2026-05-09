@@ -1043,7 +1043,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
-      <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 pt-16 pb-10 md:flex-row md:items-start md:gap-12 md:py-16">
+      <main className="mx-auto flex max-w-6xl flex-col gap-4 px-6 pt-4 pb-6 md:flex-row md:items-start md:gap-12 md:py-16">
         {/* Left: wheel */}
         <section
           className={[
@@ -1056,7 +1056,7 @@ export default function Home() {
             .filter(Boolean)
             .join(" ")}
         >
-          <h2 className="mb-6 self-start text-sm font-medium tracking-wide text-zinc-500">
+          <h2 className="mb-2 self-start text-sm font-medium tracking-wide text-zinc-500 md:mb-6">
             {isEval ? "我人生的马车" : "我人生的马车"}
           </h2>
           {/* Wheel SVG — Phase 1.5 装上 pointer 事件做 1st person 推扇区。
@@ -1342,7 +1342,7 @@ export default function Home() {
         <section className="w-full md:w-1/2">
           {isEval ? (
             <>
-              <header className="mb-6">
+              <header className="mb-3 md:mb-6">
                 <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
                   生命之轮
                 </h1>
@@ -1376,7 +1376,7 @@ export default function Home() {
               {/* 操作提示 — 跟 framing 区分开（一个是"为什么"，一个是"怎么做"）。
                   随 evalPhase 变文案：input 期间提示如何 press；touched 全满后
                   reveal 阶段切到"看到你的车"叙事。 */}
-              <div className="mb-8 min-h-[3rem]">
+              <div className="mb-4 min-h-[2rem] md:mb-8 md:min-h-[3rem]">
                 {evalPhase === "input" && (
                   <p
                     key="hint-input"
@@ -1502,7 +1502,7 @@ export default function Home() {
           ) : isReflect ? (
             <div className="flex flex-col gap-10 pt-2">
               <h1
-                className="fade-rise text-3xl font-medium leading-snug tracking-tight text-zinc-900 md:text-4xl"
+                className="fade-rise text-2xl font-medium leading-snug tracking-tight text-zinc-900 md:text-4xl"
                 style={{ animationDelay: "1.2s" }}
               >
                 我人生这辆马车，路途平坦还是颠簸？
