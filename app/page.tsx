@@ -31,9 +31,6 @@ const MAX_SCORE = 10;
 const PRESENCE_MAX_LEN = 240;
 const COMMITMENT_MAX_LEN = 80;
 
-// 极简日期款 (Phase 1.6 N7 派) — done 阶段卡片用中文短星期 ("周日"-"周六")
-const WEEKDAY_NAMES_ZH_SHORT = ["日", "一", "二", "三", "四", "五", "六"] as const;
-
 type Scores = number[]; // length 8, each 0..10 integer
 type Presence = { text: string; at: string };
 type Commitment = { text: string; at: string };
@@ -471,17 +468,17 @@ const PNG_WIDTH = 1080;
 const PNG_HEIGHT = 1350;
 
 // 构建 wheel-only SVG (无 text, 文字层由 Canvas 2D fillText 后画)。
-// 卡片内布局 (1080 x 1350):
-//   y=90:     中文日期 header (Canvas fillText)
-//   y=130:    分隔线 (Canvas stroke)
-//   y=510:    wheel 中心 (SVG drawImage, 半径 280)
-//   y=920..:  presence 文字 (Canvas fillText, multi-line)
-//   y=...:    commitment 文字 (Canvas fillText, optional)
-//   y=1280:   watermark "wheel of life" (Canvas fillText)
+// 卡片内布局 (1080 x 1350, N4 sign-off 派 — 没顶部 header):
+//   y=70..150:    article 上 padding (无 header)
+//   y=400:        wheel 中心 (SVG drawImage, 半径 280, 区域 120..680)
+//   y=760..900:   presence 文字 (Canvas fillText, multi-line)
+//   y=...:        commitment 文字 (Canvas fillText, optional)
+//   y=...:        sign-off 日期 (右对齐 "— 2026.05.09")
+//   y=1280:       watermark "wheel of life" (Canvas fillText)
 function buildWheelSvg({ scores }: { scores: Scores }): string {
   const wheelCx = PNG_WIDTH / 2;
-  const wheelCy = 510;
-  const wheelR = 280; // DOM mini wheel 190px → PNG 280px 让视觉饱满
+  const wheelCy = 400; // N4 layout — 上移 (vs N7 的 510), 无 header 占用顶部空间
+  const wheelR = 280; // DOM mini wheel 200px → PNG 280px 让视觉饱满
   const wheelScale = wheelR / MAX_RADIUS;
   const wheelGroupTransform = `translate(${wheelCx} ${wheelCy}) scale(${wheelScale.toFixed(
     4
@@ -566,10 +563,10 @@ function buildWheelSvg({ scores }: { scores: Scores }): string {
 async function renderCardToPng(opts: {
   presenceText: string;
   commitmentText: string | null;
-  dateLabel: string;
+  signOffDate: string; // "YYYY.MM.DD" 格式 — N4 sign-off 派的右对齐 "— 2026.05.09"
   scores: Scores;
 }): Promise<Blob> {
-  const { presenceText, commitmentText, dateLabel, scores } = opts;
+  const { presenceText, commitmentText, signOffDate, scores } = opts;
 
   // 等 webfont 加载——这步是 PNG 用 webfont 不 fallback 的关键 (跟旧版 B' 不同,
   // 旧版在 isolated origin 拿不到 webfont, 必须 fallback 到 system 楷体)。
@@ -612,19 +609,6 @@ async function renderCardToPng(opts: {
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
 
-    // 中文日期 header (y=90) — Ma Shan Zheng webfont (跟 DOM 一致)
-    ctx.font = '34px "Ma Shan Zheng", "STKaiti", "KaiTi", serif';
-    ctx.fillStyle = "#71717a";
-    ctx.fillText(dateLabel, PNG_WIDTH / 2, 90);
-
-    // Divider line (y=130) — 浅灰
-    ctx.beginPath();
-    ctx.moveTo(200, 130);
-    ctx.lineTo(PNG_WIDTH - 200, 130);
-    ctx.strokeStyle = "#f4f4f5";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
     // Presence (主) — 字号自适应 + multi-line wrap + cap to prevent overflow
     const presenceLen = presenceText.length;
     const presenceFontSize =
@@ -639,7 +623,8 @@ async function renderCardToPng(opts: {
       8,
       Math.floor((PNG_WIDTH - 140) / (presenceFontSize * 0.95))
     );
-    const MAX_PRESENCE_LINES = commitmentText ? 5 : 7;
+    // 有 commit + sign-off 时余下空间小, cap 4 行; 没 commit 但有 sign-off cap 6 行
+    const MAX_PRESENCE_LINES = commitmentText ? 4 : 6;
     const presenceLines: string[] = [];
     for (let i = 0; i < presenceText.length; i += presenceCharsPerLine) {
       if (presenceLines.length >= MAX_PRESENCE_LINES) {
@@ -651,20 +636,30 @@ async function renderCardToPng(opts: {
       }
       presenceLines.push(presenceText.slice(i, i + presenceCharsPerLine));
     }
-    const presenceY0 = 920;
+    // N4 layout: wheel y=400 (R=280, bottom 680), presence y0=760 (wheel + 80 gap)
+    const presenceY0 = 760;
     const presenceLineHeight = presenceFontSize * 1.35;
     presenceLines.forEach((line, idx) => {
       ctx.fillText(line, PNG_WIDTH / 2, presenceY0 + idx * presenceLineHeight);
     });
 
     // Commitment (副, optional)
+    let nextY = presenceY0 + presenceLines.length * presenceLineHeight;
     if (commitmentText) {
-      const commitmentY =
-        presenceY0 + presenceLines.length * presenceLineHeight + 50;
+      const commitmentY = nextY + 50;
       ctx.font = '32px "Ma Shan Zheng", "STKaiti", "KaiTi", serif';
       ctx.fillStyle = "#71717a";
       ctx.fillText(`— ${commitmentText}`, PNG_WIDTH / 2, commitmentY);
+      nextY = commitmentY;
     }
+
+    // Sign-off 日期 (N4 派) — 右对齐 "— YYYY.MM.DD", 像信件 sign-off
+    const signOffY = nextY + 60;
+    ctx.font = '32px "Ma Shan Zheng", "STKaiti", "KaiTi", serif';
+    ctx.fillStyle = "#a1a1aa";
+    ctx.textAlign = "right";
+    ctx.fillText(`— ${signOffDate}`, PNG_WIDTH - 80, signOffY);
+    ctx.textAlign = "center"; // reset for watermark
 
     // Watermark — Caveat (Latin handwriting webfont)
     ctx.font = '28px "Caveat", cursive';
@@ -973,13 +968,11 @@ export default function Home() {
     setSharing(true);
     setShareError(null);
     try {
-      const dateD = new Date(presence.at);
-      const weekday = WEEKDAY_NAMES_ZH_SHORT[dateD.getDay()];
-      const dateLabel = `${dateD.getFullYear()} 年 ${dateD.getMonth() + 1} 月 ${dateD.getDate()} 日 · 周${weekday}`;
+      const signOffDate = formatDateDots(presence.at); // "2026.05.09"
       const pngBlob = await renderCardToPng({
         presenceText: presence.text,
         commitmentText: commitment ? commitment.text : null,
-        dateLabel,
+        signOffDate,
         scores,
       });
       const dateYmd = formatDateYMD(presence.at);
@@ -1223,34 +1216,23 @@ export default function Home() {
       <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
         <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-6 px-6 py-12">
           {/* Souvenir card — the only emotional outlet of the UI (圆桌 #1 #7).
-              Phase 1.6 reframe: 极简日期款 (N7 派). 顶部一行中文日期 header
-              ("2026 年 5 月 9 日 · 周X") 锚定 "这是某天的快照", 不堆装订环 /
-              大日期数字等装饰 — 看日历感压到最轻, wheel + 文字仍占视觉主导。 */}
+              Phase 1.6 reframe v4 (N4 sign-off 派, 经 N7 真机反馈后回退): 没顶部
+              header, 日期作整张卡 sign-off (commitment / presence 之后右对齐
+              "— 2026.05.09" 手写体, 像信件署日期), 再下方 watermark "wheel of
+              life"。视觉气场: 用户的话占主导, 日期 sign-off 是 ta 的署名,
+              watermark 是产品 ID。 */}
           <article
             className="fade-rise relative w-full overflow-hidden rounded-md bg-white px-7 py-9 shadow-md"
             style={{ animationDelay: "0.1s" }}
             aria-label="留印卡片"
           >
-            {/* 中文日期 header — "2026 年 5 月 9 日 · 周X", 一行小字锚定时间。
-                mb-2 (vs 原 mb-6): wheel 视觉重心因高分扇区偏上, 上方 spacing
-                需要非对称缩短防止"漂浮感", 配合下方 gap-8 让 wheel ↔ presence
-                通气 (liushu mobile 真机反馈 mb-3 还差"一丢丢")。 */}
-            <div className="mb-2 border-b border-zinc-100 pb-3 text-center">
-              <p className="font-zh-hand text-base tracking-[0.15em] text-zinc-500">
-                {(() => {
-                  const d = new Date(presence.at);
-                  const weekday = WEEKDAY_NAMES_ZH_SHORT[d.getDay()];
-                  return `${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日 · 周${weekday}`;
-                })()}
-              </p>
-            </div>
-            <div className="flex flex-col items-center gap-8">
-              {/* Mini wheel — clean snapshot, no ground / labels / bob. 190px 适配 N7 layout */}
+            <div className="flex flex-col items-center gap-6">
+              {/* Mini wheel — 200px N4 layout (vs N7 的 190px) */}
               <svg
                 viewBox={`${-MAX_RADIUS - VBOX_PAD} ${-MAX_RADIUS - VBOX_PAD} ${
                   (MAX_RADIUS + VBOX_PAD) * 2
                 } ${(MAX_RADIUS + VBOX_PAD) * 2}`}
-                className="h-auto w-full max-w-[190px]"
+                className="h-auto w-full max-w-[200px]"
                 role="img"
                 aria-label="生命之轮快照"
               >
@@ -1299,38 +1281,38 @@ export default function Home() {
                 <circle cx={0} cy={0} r={2.5} fill="#27272a" />
               </svg>
 
-              {/* Presence — main voice, handwritten. text-2xl md:text-3xl 适配 N7 layout */}
-              <p className="font-zh-hand text-center text-2xl leading-snug text-zinc-900 md:text-3xl">
+              {/* Presence — main voice, handwritten. text-3xl md:text-4xl N4 layout */}
+              <p className="font-zh-hand text-center text-3xl leading-snug text-zinc-900 md:text-4xl">
                 {presence.text}
               </p>
 
               {/* Commitment — optional, sits under presence as a soft echo. */}
               {commitment && (
-                <p className="font-zh-hand text-center text-base leading-relaxed text-zinc-500 md:text-lg">
+                <p className="font-zh-hand text-center text-xl leading-relaxed text-zinc-500 md:text-2xl">
                   — {commitment.text}
                 </p>
               )}
 
+              {/* Date sign-off (N4 派) — 整张卡的 "署日期", 跟 commitment 的 dash
+                  同款, 右对齐, 像信件 sign-off。日期格式 `YYYY.MM.DD` 点分隔, 简洁。 */}
+              <p className="font-zh-hand w-full pr-2 text-right text-base text-zinc-400">
+                — {(() => {
+                  const d = new Date(presence.at);
+                  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+                })()}
+              </p>
+
               {/* Watermark — Latin handwriting echoes the Chinese script above. */}
-              <p className="font-en-hand mt-1 text-sm tracking-wide text-zinc-400">
+              <p className="font-en-hand text-sm tracking-wide text-zinc-400">
                 wheel of life
               </p>
             </div>
           </article>
 
-          {/* Affordance — Phase 1.6 reframe v3.
-              主推 framing "存到你的相册" 跟按钮重复, 删主推一行让按钮承担;
-              留次推+stealth 一行作为分享语义 hint, 教练入口用 "也可以...或..."
-              降级成 alternative — 没教练的用户语法上自然 skip 后半句, 有教练
-              的能 catch. */}
-          <p className="text-sm text-zinc-500">
-            也可以发给在乎的人，或带给你的教练探索
-          </p>
-
           {/* Phase 1.6 子任务 C — 统一"存到相册"按钮 (Web Share API + download
-              fallback)。文案选 "存到相册" 跟自存主轴一致 ("分享"暗示发给别人,
-              跟 reframe 错位)。mobile 触发 share sheet 含相册选项, desktop 走
-              <a download> 下载到 Downloads。 */}
+              fallback)。reframe v4 (2026-05-09): 按钮放在 framing 上面 — 主 CTA
+              直接接 卡片, framing 一行 hint 在按钮下方作 alternative; 现在 "也"
+              指代 "除了存到相册外" 有 referent, 逻辑通顺。 */}
           <div className="flex flex-col items-center gap-2">
             <button
               type="button"
@@ -1350,6 +1332,13 @@ export default function Home() {
               </p>
             )}
           </div>
+
+          {/* Affordance — 按钮下方一行 hint, "也可以" 指代 "除了存到相册外"。
+              教练入口用 "也可以...或..." 降级成 alternative — 没教练的用户语法
+              上自然 skip 后半句, 有教练的能 catch. */}
+          <p className="text-sm text-zinc-500">
+            也可以发给在乎的人，或带给你的教练探索
+          </p>
 
           <button
             type="button"
