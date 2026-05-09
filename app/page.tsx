@@ -649,7 +649,8 @@ async function renderCardToPng(opts: {
       const commitmentY = nextY + 50;
       ctx.font = '32px "Ma Shan Zheng", "STKaiti", "KaiTi", serif';
       ctx.fillStyle = "#71717a";
-      ctx.fillText(`— ${commitmentText}`, PNG_WIDTH / 2, commitmentY);
+      // N4 派 — 删 "— " prefix (sign-off date 独占 dash symbol)
+      ctx.fillText(commitmentText, PNG_WIDTH / 2, commitmentY);
       nextY = commitmentY;
     }
 
@@ -1286,10 +1287,11 @@ export default function Home() {
                 {presence.text}
               </p>
 
-              {/* Commitment — optional, sits under presence as a soft echo. */}
+              {/* Commitment — optional, sits under presence as a soft echo.
+                  N4 派删 "— " prefix (sign-off date 已用 dash, 重复). */}
               {commitment && (
                 <p className="font-zh-hand text-center text-xl leading-relaxed text-zinc-500 md:text-2xl">
-                  — {commitment.text}
+                  {commitment.text}
                 </p>
               )}
 
@@ -1333,11 +1335,11 @@ export default function Home() {
             )}
           </div>
 
-          {/* Affordance — 按钮下方一行 hint, "也可以" 指代 "除了存到相册外"。
-              教练入口用 "也可以...或..." 降级成 alternative — 没教练的用户语法
-              上自然 skip 后半句, 有教练的能 catch. */}
+          {/* Affordance — 按钮下方一行 essence 阐述 (不是 alt action)。
+              v4 文案 reframe: 删"发给别人"语义, 主推 "留给以后的自己" 跟 Vision
+              末段"半年后某个周日"对位 / 教练 stealth 用 "或..." 平等并列。 */}
           <p className="text-sm text-zinc-500">
-            也可以发给在乎的人，或带给你的教练探索
+            留给以后的自己，或跟教练一起探索
           </p>
 
           <button
