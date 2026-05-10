@@ -1379,7 +1379,7 @@ export default function Home() {
             .join(" ")}
         >
           <h2 className="mb-6 self-start text-sm font-medium tracking-wide text-zinc-500">
-            {isEval ? "我人生的马车" : "我人生的马车"}
+            我人生的马车
           </h2>
           {/* Wheel SVG — Phase 1.5 装上 pointer 事件做 1st person 推扇区。
               touch-action: none 阻止 mobile 默认 pull-to-refresh / page scroll
@@ -1721,7 +1721,7 @@ export default function Home() {
                     key="hint-shape"
                     className="fade-rise text-sm leading-relaxed text-zinc-500"
                   >
-                    这是你这辆车此刻的形状。
+                    这是你的车轮此刻的形状。
                   </p>
                 )}
                 {evalPhase === "ready" && (
@@ -1816,9 +1816,6 @@ export default function Home() {
               <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
                 让它跑一跑
               </h1>
-              <p className="mt-3 text-sm leading-relaxed text-zinc-500">
-                这是我现在的车。颠簸的地方，是我现在的失衡。
-              </p>
             </header>
           ) : isReflect ? (
             <div className="flex flex-col gap-10 pt-2">
@@ -1862,7 +1859,7 @@ export default function Home() {
               {presencePhase === "input" ? (
                 <>
                   <p className="text-2xl font-medium leading-snug tracking-tight text-zinc-700 md:text-3xl">
-                    看着这辆车，我此刻感觉到——
+                    看着这辆马车，我此刻感觉到——
                   </p>
                   <textarea
                     value={presenceDraft}
