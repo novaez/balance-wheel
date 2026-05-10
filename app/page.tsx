@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 
 // 8 dimensions, clockwise starting from 12 o'clock.
 const DIMENSIONS = [
@@ -30,6 +30,14 @@ const MIN_SCORE = 0;
 const MAX_SCORE = 10;
 const PRESENCE_MAX_LEN = 240;
 const COMMITMENT_MAX_LEN = 80;
+// Phase 2 register craft — placeholder 字面值. 圆桌 4 "成熟的不端庄" register
+// anchor. 用户点 commit button (或 mobile 输入法对勾) 时若 draft 空, fall
+// back 到这个值作为 user voice (主动 click = user-initiated produce, sequence
+// 守则 reframe). Note: commitment fall back 等于 commitment "默认值实际做了",
+// 跟圆桌 4 §双守则覆盖 "commitment 默认值不做" 有 narrative tension —
+// 2026-05-10 liushu 转向, 圆桌 4 doc 同步 amend.
+const PRESENCE_PLACEHOLDER = "嗯，颠";  // P3, 李四 anchor "放假的车" 极简 echo
+const COMMITMENT_PLACEHOLDER = "今天做：先不做";  // C1, register anchor 直接落地
 
 type Scores = number[]; // length 8, each 0..10 integer
 type Presence = { text: string; at: string };
@@ -272,9 +280,15 @@ function ScribbleHatchingFill({
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const sectorMidDeg = start + SECTOR_DEG / 2;
   const baseStrokeDeg = sectorMidDeg + 70; // 跟扇区中线 ~70° 夹角
-  // density: 满分 ~80 strokes (扇区面积大), 低分 ~22。N 由 strokePatternScore
-  // 决定 → press 时是 80（满分密度），所以拖动半径不抖。
-  const N = Math.max(22, Math.round(22 + strokePatternScore * 5.8));
+  // Phase 2 craft — N ∝ sector 面积 (∝ r²) 让密度跨 score constant.
+  // liushu fix: 之前算法 N grows linearly 但面积 grows 平方, low-score 显得密
+  // high-score 显得潦草; 现在 N 跟面积成正比, 视觉密度 stable.
+  // density 系数 0.012 给 score=10 ~120 strokes (比之前 80 +50% 密),
+  // score=5 ~36, score=1 fall back to min 18 (避免极小扇区无 stroke).
+  // press 时 strokePatternScore=MAX_SCORE → r=MAX_RADIUS → N 锁定满分密度,
+  // 拖动半径不抖 (Phase 1.5g 决策仍生效).
+  const sectorArea = 0.393 * r * r; // (45/360) × π × r² ≈ pie slice area
+  const N = Math.max(18, Math.round(sectorArea * 0.012));
   const rng = mulberry32(hashSeed(sectorIndex, 0xd2, N));
   const lines: React.ReactElement[] = [];
   for (let i = 0; i < N; i++) {
@@ -310,6 +324,10 @@ function ScribbleHatchingFill({
         strokeWidth={sw.toFixed(2)}
         strokeLinecap="round"
         opacity={op.toFixed(2)}
+        // Phase 2 craft — multiply blend 让重叠 strokes darker, 模拟蜡笔颜料叠加
+        // 边缘加深 (kindergarten vibe). SVG 默认 isolated stacking, 不需 isolate
+        // declaration; multiply 跟 paper-grain 背景也叠 → strokes 透出纸纹.
+        style={{ mixBlendMode: "multiply" }}
       />
     );
   }
@@ -1071,7 +1089,7 @@ export default function Home() {
   }, []);
 
   const handlePresenceChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    (e: React.ChangeEvent<HTMLInputElement>) => {
       setPresenceDraft(e.target.value);
     },
     []
@@ -1082,24 +1100,49 @@ export default function Home() {
   }, [presenceDraft, witnessNow]);
 
   const handleWitnessClick = useCallback(() => {
-    witnessNow(presenceDraft);
+    // 主动点 = user-initiated produce; 空 draft fall back 到 placeholder 作 user voice.
+    // blur path 不 fall back (avoid implicit commit on focus loss).
+    witnessNow(presenceDraft.trim() || PRESENCE_PLACEHOLDER);
   }, [presenceDraft, witnessNow]);
 
   const handleFinalize = useCallback(() => {
-    const trimmedCommit = commitDraft.trim();
-    if (trimmedCommit) {
-      setCommitment({
-        text: trimmedCommit.slice(0, COMMITMENT_MAX_LEN),
-        at: new Date().toISOString(),
-      });
-    } else {
-      setCommitment(null);
-    }
+    // 主动点 "去看留印卡片" 或 mobile 对勾 = user-initiated; 空 commit fall back
+    // 到 placeholder 作 user voice (跟 presence handleWitnessClick 对称).
+    // Note: 这意味着 commitment 不再 optional — 卡片必显示 commit row.
+    const commitText = commitDraft.trim() || COMMITMENT_PLACEHOLDER;
+    setCommitment({
+      text: commitText.slice(0, COMMITMENT_MAX_LEN),
+      at: new Date().toISOString(),
+    });
     setMode("done");
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }, [commitDraft]);
+
+  // Mobile 工具栏对勾 (iOS 拼音键盘 / 九宫格 — 没 Return key, 工具栏对勾是
+  // 唯一"完成"入口) 不发 keydown event, 也不一定 trigger blur (iOS 16+ 倾向
+  // dismiss keyboard 但保 textarea focus). 监听 visualViewport resize 检测
+  // keyboard dismiss 作为 commit trigger fallback. desktop 无虚拟键盘 / 无
+  // visualViewport, listener no-op (vv 不存在时直接 return).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (mode !== "presence" || presencePhase !== "input") return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const KEYBOARD_THRESHOLD = 100;
+    let keyboardWasOpen = vv.height < window.innerHeight - KEYBOARD_THRESHOLD;
+    const handleResize = () => {
+      const isOpen = vv.height < window.innerHeight - KEYBOARD_THRESHOLD;
+      if (keyboardWasOpen && !isOpen) {
+        // Keyboard 刚 dismiss (工具栏对勾 / tap outside) → user-initiated commit
+        witnessNow(presenceDraft.trim() || PRESENCE_PLACEHOLDER);
+      }
+      keyboardWasOpen = isOpen;
+    };
+    vv.addEventListener("resize", handleResize);
+    return () => vv.removeEventListener("resize", handleResize);
+  }, [mode, presencePhase, presenceDraft, witnessNow]);
 
   const isEval = mode === "eval";
   const isRunning = mode === "running";
@@ -1126,16 +1169,31 @@ export default function Home() {
   // render block 都能 reuse. wheel center SVG x = 0; obstacle x in SVG =
   // 0 + atProgress - groundProgressAbs.
   const groundProgressAbs = isRunning ? rotation * GROUND_PER_DEG : 0;
-  const obstaclesData: {
-    atProgress: number;
-    type: "bump" | "pit";
-    radius: number;
-    height: number;
-  }[] = [
-    { atProgress: 250, type: "bump", radius: 18, height: 10 },
-    { atProgress: 750, type: "pit", radius: 15, height: 8 },
-    { atProgress: 1250, type: "bump", radius: 17, height: 9 },
-  ];
+  // Phase 2 craft — obstacles 每次 startRide 重新随机 (跟 runId 挂钩, mulberry32
+  // deterministic given runId, 同 run 内 React render 间稳定). 3 个 obstacles
+  // 在 [200, 1200) 范围, 至少相距 250 避免视觉拥挤. type/radius/height 也微
+  // jitter 让每跑视觉不同.
+  const obstaclesData = useMemo<
+    { atProgress: number; type: "bump" | "pit"; radius: number; height: number }[]
+  >(() => {
+    const rng = mulberry32(hashSeed(runId, 0xb04d));
+    const positions: number[] = [];
+    let attempts = 0;
+    while (positions.length < 3 && attempts < 50) {
+      const at = 200 + Math.floor(rng() * 1000);
+      if (positions.every((p) => Math.abs(p - at) >= 250)) {
+        positions.push(at);
+      }
+      attempts++;
+    }
+    positions.sort((a, b) => a - b);
+    return positions.map((at) => ({
+      atProgress: at,
+      type: rng() < 0.5 ? ("bump" as const) : ("pit" as const),
+      radius: 14 + Math.floor(rng() * 6), // 14-19
+      height: 7 + Math.floor(rng() * 4), // 7-10
+    }));
+  }, [runId]);
   const groundCurveDeviation = (x: number) => {
     let dy = 0;
     for (const o of obstaclesData) {
@@ -1861,25 +1919,35 @@ export default function Home() {
                   <p className="text-2xl font-medium leading-snug tracking-tight text-zinc-700 md:text-3xl">
                     看着这辆马车，我此刻感觉到——
                   </p>
-                  <textarea
+                  <input
+                    type="text"
                     value={presenceDraft}
                     onChange={handlePresenceChange}
                     onBlur={handlePresenceBlur}
+                    onKeyDown={(e) => {
+                      // mobile 输入法对勾 (input 类型 iOS 视为 form-submit context,
+                      // 工具栏对勾 = blur + 发 keydown Enter, 跟 textarea 不同) +
+                      // desktop Enter 触发 commit; 中文 IME composing 时 Enter
+                      // 是 confirm composition 不 commit
+                      if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        handleWitnessClick();
+                      }
+                    }}
                     autoFocus
-                    rows={4}
                     maxLength={PRESENCE_MAX_LEN}
-                    className="w-full resize-none border-none bg-transparent p-0 text-2xl font-light leading-relaxed text-zinc-900 placeholder:text-zinc-300 focus:outline-none md:text-3xl"
+                    placeholder={PRESENCE_PLACEHOLDER}
+                    enterKeyHint="done"
+                    className="w-full border-none bg-transparent p-0 text-2xl font-light leading-relaxed text-zinc-900 placeholder:text-zinc-300 focus:outline-none md:text-3xl"
                     aria-label="我此刻感觉到"
                   />
-                  {presenceDraft.trim() && (
-                    <button
-                      type="button"
-                      onClick={handleWitnessClick}
-                      className="fade-rise self-start text-sm text-zinc-700 underline-offset-4 transition-colors hover:text-zinc-900 hover:underline"
-                    >
-                      我说完了 →
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleWitnessClick}
+                    className="fade-rise self-start text-sm text-zinc-700 underline-offset-4 transition-colors hover:text-zinc-900 hover:underline"
+                  >
+                    我说完了 →
+                  </button>
                 </>
               ) : (
                 <>
@@ -1905,7 +1973,15 @@ export default function Home() {
                       type="text"
                       value={commitDraft}
                       onChange={(e) => setCommitDraft(e.target.value)}
-                      placeholder=""
+                      onKeyDown={(e) => {
+                        // mobile 对勾 / desktop Enter 触发 finalize, IME composing 时不触发
+                        if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                          e.preventDefault();
+                          handleFinalize();
+                        }
+                      }}
+                      placeholder={COMMITMENT_PLACEHOLDER}
+                      enterKeyHint="done"
                       maxLength={COMMITMENT_MAX_LEN}
                       className="w-full border-b border-zinc-200 bg-transparent py-2 text-base text-zinc-900 placeholder:text-zinc-300 focus:border-zinc-900 focus:outline-none"
                     />
