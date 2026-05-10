@@ -960,8 +960,10 @@ export default function Home() {
   }, []);
 
   // Phase 1.6 子任务 C — 统一"分享"按钮 + Web Share API
-  // mobile (canShare files): navigator.share → share sheet → "保存到相册"
-  // desktop (无 share API 或不支持 files): fallback <a download> 下载到本地
+  // mobile (pointer:coarse + canShare files): navigator.share → share sheet → "保存到相册"
+  // desktop (pointer:fine 或不支持 share files): fallback <a download> 下载到本地
+  // 注: (pointer:coarse) gate 必要, 因为 macOS Safari/Chrome 也实现 canShare files,
+  //   仅靠 canShare 会让 desktop 错走 share sheet 分支 (2026-05-10 真机 verify 暴露)
   // AbortError (用户取消 share sheet) 静默吞掉, 不当 error 处理。
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
@@ -984,7 +986,11 @@ export default function Home() {
       const shareTitle = `我的生命之轮 ${dateDots}`;
 
       const pngFile = new File([pngBlob], filename, { type: "image/png" });
+      const isCoarsePointer =
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(pointer: coarse)").matches === true;
       const canShareFiles =
+        isCoarsePointer &&
         typeof navigator !== "undefined" &&
         typeof navigator.canShare === "function" &&
         navigator.canShare({ files: [pngFile] });
