@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# design mockups (local-only, 保留作未来选型 reference, 不进 production build)
+/app/preview/
