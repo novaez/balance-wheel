@@ -26,6 +26,15 @@ body {
   --page-bg-95: rgba(250, 250, 250, 0.95);
 }
 
+/* Phase 2 Safari witnessed scroll fix attempt — disable browser scroll anchoring.
+   Safari iOS auto-adjusts scroll to keep current focused / referenced element
+   visible when DOM changes. presence input → witnessed phase 时 DOM 改变,
+   Safari preserve scroll relative to old element 让 page 显得偏上. overflow-anchor:
+   none 让 Safari 不 anchor scroll to DOM changes, my scrollTo 才 sticks. */
+html, body {
+  overflow-anchor: none;
+}
+
 /* Range slider styling — keep monochrome so the wheel sectors are the only color source. */
 input[type="range"] {
   -webkit-appearance: none;
