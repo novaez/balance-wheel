@@ -1380,6 +1380,10 @@ export default function Home() {
     setEvalPhase("ready");
     setPressing(null);
     setProgress(0);
+    // 重置 scroll position 避免 done page scroll 残留导致 eval page 显示位置过高
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }, []);
 
   // Fresh entry into Stage 5 v2 from reflect: clear any prior drafts. The
@@ -1630,7 +1634,7 @@ export default function Home() {
       <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
         <main
           className="mx-auto flex max-w-md flex-col items-center gap-6 px-6 pb-12 md:pt-12 md:pb-12 md:min-h-screen md:justify-center"
-          style={{ paddingTop: "calc(env(safe-area-inset-top) + 4rem)" }}
+          style={{ paddingTop: "calc(env(safe-area-inset-top) + 1.5rem)" }}
         >
           {/* Souvenir card — the only emotional outlet of the UI (圆桌 #1 #7).
               Phase 1.6 reframe v4 (N4 sign-off 派, 经 N7 真机反馈后回退): 没顶部
