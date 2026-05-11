@@ -1628,7 +1628,7 @@ export default function Home() {
   if (isDone && presence) {
     return (
       <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
-        <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-6 px-6 pt-12 pb-24 md:pb-12">
+        <main className="mx-auto flex max-w-md flex-col items-center gap-6 px-6 pt-8 pb-32 md:pt-12 md:pb-12 md:min-h-screen md:justify-center">
           {/* Souvenir card — the only emotional outlet of the UI (圆桌 #1 #7).
               Phase 1.6 reframe v4 (N4 sign-off 派, 经 N7 真机反馈后回退): 没顶部
               header, 日期作整张卡 sign-off (commitment / presence 之后右对齐
