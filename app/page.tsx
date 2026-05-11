@@ -1538,6 +1538,20 @@ export default function Home() {
     // scroll input visible 不被覆盖.
   }, [mode]);
 
+  // 额外: presence phase 进 "witnessed" (用户 click "我说完了") 时 scroll 回 top.
+  // mode 一直 "presence" 不变, 上面的 useEffect [mode] dep 不 trigger. 需要单独
+  // 监听 presencePhase. 只 fire on "witnessed" 状态, "input" 状态不 reset (避
+  // 免 override keyboard auto-scroll).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (presencePhase !== "witnessed") return;
+    requestAnimationFrame(() => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    });
+  }, [presencePhase]);
+
   useEffect(() => {
     if (mode === "presence") {
       setPresencePlaceholder(
