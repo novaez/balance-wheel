@@ -1467,6 +1467,12 @@ export default function Home() {
   const handleWitnessClick = useCallback(() => {
     // 主动点 = user-initiated produce; 空 draft fall back 到 placeholder 作 user voice.
     // blur path 不 fall back (avoid implicit commit on focus loss).
+    // Safari iOS: blur active input 先 (witnessNow 内 scroll reset 才不被 focus
+    // preserve override).
+    if (typeof document !== "undefined") {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement) active.blur();
+    }
     witnessNow(presenceDraft.trim() || presencePlaceholder);
   }, [presenceDraft, witnessNow, presencePlaceholder]);
 
@@ -2402,12 +2408,12 @@ export default function Home() {
                     onFocus={(e) => {
                       // iOS Safari + WeChat WebView keyboard 弹起后 layout viewport
                       // 不缩, browser native auto-scroll 不 reliable. delay 300ms
-                      // 等 keyboard 动画完, 显式 scrollIntoView 让 input 在视觉
-                      // viewport 顶部. handlePresenceBlur 不 fall back, 即使
-                      // scrollIntoView 触发 spurious blur 也 safe (不 commit).
+                      // 等 keyboard 动画完, 显式 scroll input visible. 用 instant
+                      // (not smooth) 避免 WeChat smooth animation 间触发 spurious
+                      // blur 让 witness phase 自动 flip.
                       const el = e.currentTarget;
                       setTimeout(() => {
-                        el.scrollIntoView({ block: "start", behavior: "smooth" });
+                        el.scrollIntoView({ block: "start", behavior: "instant" as ScrollBehavior });
                       }, 300);
                     }}
                     autoFocus
