@@ -1799,13 +1799,13 @@ export default function Home() {
 
   return (
     <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
-      <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 pt-2 pb-6 md:flex-row md:items-start md:gap-12 md:py-16">
+      <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 pt-2 pb-24 md:flex-row md:items-start md:gap-12 md:py-16 md:pb-16">
         {/* Left: wheel */}
         <section
           className={[
             "flex w-full flex-col items-center",
             "md:w-1/2 md:sticky md:top-10",
-            isEval ? "sticky top-0 z-10 bg-zinc-50/95 pt-4 pb-2 backdrop-blur border-b border-zinc-200" : "",
+            isEval ? "sticky top-0 z-10 bg-zinc-50/95 pt-4 pb-1 backdrop-blur" : "",
             "md:bg-transparent md:pt-0 md:pb-0 md:backdrop-blur-none",
           ]
             .filter(Boolean)
