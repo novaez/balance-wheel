@@ -1063,12 +1063,6 @@ export default function Home() {
     value: number;
   } | null>(null);
   const [a11yOpen, setA11yOpen] = useState(false);
-  // Phase 2 craft 4 — 蜡屑掉落 particles. press release 时在 sector tip 区
-  // 生成 N 颗粒子, CSS animation 自动下落+drift+淡出, 1.4s 后 cleanup.
-  const [waxParticles, setWaxParticles] = useState<
-    { id: number; cx: number; cy: number; vx: number; vy: number; color: string }[]
-  >([]);
-  const waxIdRef = useRef(0);
   const wheelSvgRef = useRef<SVGSVGElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
@@ -1247,30 +1241,6 @@ export default function Home() {
     setPressing(null);
     // Phase 1.5h fix #2 — 让数字 linger 500ms 再消失。
     setCommitFlash({ sectorIndex: idx, value });
-    // Phase 2 craft 4 — 蜡屑掉落: release 时 spawn 7 颗粒子在 sector tip 区,
-    // CSS animation 自动 fall + drift + fade. score=0 时不 spawn (没 stroke).
-    if (value > 0) {
-      const dim = DIMENSIONS[idx];
-      const start = -90 + idx * SECTOR_DEG;
-      const r = sectorRadius(value);
-      const newParticles = Array.from({ length: 7 }, () => {
-        const theta = ((start + Math.random() * SECTOR_DEG) * Math.PI) / 180;
-        const rOffset = r * (0.7 + Math.random() * 0.3);
-        return {
-          id: ++waxIdRef.current,
-          cx: Math.cos(theta) * rOffset,
-          cy: Math.sin(theta) * rOffset,
-          vx: (Math.random() - 0.5) * 24,
-          vy: 30 + Math.random() * 35,
-          color: dim.color,
-        };
-      });
-      setWaxParticles((prev) => [...prev, ...newParticles]);
-      const cleanupIds = new Set(newParticles.map((p) => p.id));
-      setTimeout(() => {
-        setWaxParticles((prev) => prev.filter((p) => !cleanupIds.has(p.id)));
-      }, 1500);
-    }
   }, [pressing]);
 
   // Phase 1.5h fix #2 — commitFlash 自动 clear，配合 PreviewNumber linger 显示。
@@ -1705,7 +1675,7 @@ export default function Home() {
 
   if (isDone && presence) {
     return (
-      <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
+      <div className="min-h-screen w-full bg-[#faf6ee] text-zinc-900 font-sans">
         <main
           className="mx-auto flex max-w-md flex-col items-center gap-6 px-6 pb-12 md:pt-12 md:pb-12 md:min-h-screen md:justify-center"
           style={{ paddingTop: "calc(env(safe-area-inset-top) + 4vh)" }}
@@ -1889,7 +1859,7 @@ export default function Home() {
           className={[
             "flex w-full flex-col items-center",
             "md:w-1/2 md:sticky md:top-10",
-            isEval ? "md:sticky md:top-10 md:z-10 md:bg-zinc-50/95 md:backdrop-blur" : "",
+            isEval ? "md:sticky md:top-10 md:z-10 md:bg-[#faf6ee]/95 md:backdrop-blur" : "",
             "md:bg-transparent md:pt-0 md:pb-0 md:backdrop-blur-none",
           ]
             .filter(Boolean)
@@ -2075,26 +2045,6 @@ export default function Home() {
 
                   {/* center dot */}
                   <circle cx={0} cy={0} r={2.5} fill="#27272a" />
-
-                  {/* Phase 2 craft 4 — 蜡屑掉落 particles. release press 时 spawn
-                      from commitPress, CSS animation 自动 fall + drift + fade. */}
-                  {waxParticles.map((p) => (
-                    <circle
-                      key={p.id}
-                      cx={p.cx}
-                      cy={p.cy}
-                      r={1.4}
-                      fill={p.color}
-                      className="wax-particle"
-                      style={
-                        {
-                          "--wax-vx": `${p.vx}`,
-                          "--wax-vy": `${p.vy}`,
-                        } as React.CSSProperties
-                      }
-                      pointerEvents="none"
-                    />
-                  ))}
 
                   {/* Phase 1.5c 试用版 onboarding：input 阶段持续显示 8 个
                       dashed 扇区轮廓（满半径外缘 dashed 圆 + 8 条径向 dashed 线），
