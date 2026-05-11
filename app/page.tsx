@@ -1544,6 +1544,13 @@ export default function Home() {
     if (typeof window === "undefined") return;
     if (presencePhase !== "witnessed") return;
     const scrollAll = () => {
+      // Blur active element 先, 否则 Safari iOS 会 preserve scroll 让 focused
+      // element visible, override 我们的 scrollTo. presence input blur 已 implicit
+      // (phase change unmount), 但 commit input 可能 auto-focus 或 残留 focus.
+      const active = document.activeElement as HTMLElement | null;
+      if (active && active.tagName === "INPUT") {
+        active.blur();
+      }
       window.scrollTo(0, 0);
       document.documentElement.scrollTop = 0;
       document.body.scrollTop = 0;
