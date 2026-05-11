@@ -1531,18 +1531,11 @@ export default function Home() {
       document.body.scrollTop = 0;
     };
     requestAnimationFrame(scrollAll);
-    const t1 = setTimeout(scrollAll, 100);
-    const t2 = setTimeout(scrollAll, 350);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-    // Dep array 只 [mode], 不含 presencePhase: presence input phase 期间 user
-    // focus textarea + keyboard 弹出, browser auto-scroll input into view.
-    // 如果 dep 含 presencePhase, useEffect 会 fire reset scroll, 覆盖 browser
-    // auto-scroll, user 看不到 input. presencePhase 各阶段 transition (input →
-    // witnessed) 内部已经在 witnessNow / handleFinalize 显式 scrollTo, 不需
-    // useEffect 再 reset.
+    // 删除 setTimeout 100/350ms — presence mode autoFocus textarea 触发
+    // browser keyboard auto-scroll input visible, 但 350ms 后我的 setTimeout
+    // reset scrollTop = 0 把 browser scroll override, input 又被遮. 单 rAF
+    // 立即 reset 够 cover mode change initial scroll, autoFocus 后 browser
+    // scroll input visible 不被覆盖.
   }, [mode]);
 
   useEffect(() => {
