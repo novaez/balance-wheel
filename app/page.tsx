@@ -1,6 +1,16 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo } from "react";
+import {
+  selectMetaphorForVisit,
+  METAPHOR_POOL,
+} from "./components/Stage3/selectMetaphor";
+import {
+  METAPHOR_DISPLAY_NAME_ZH,
+  type MetaphorPick,
+  type MetaphorName,
+} from "./components/Stage3/types";
+import { MetaphorRenderer } from "./components/Stage3/MetaphorRenderer";
 
 // 8 dimensions, clockwise starting from 12 o'clock.
 const DIMENSIONS = [
@@ -837,8 +847,11 @@ async function renderCardToPng(opts: {
   doodleVariant: DoodleVariant;
   doodlePosIdx: number;
   doodleRotation: number;
+  // Phase 3 — Stage 6 footer "今日 · {metaphor 中文名}" (Stage 3 ↔ Stage 6 continuity).
+  // null = pick 没 ready (pre-mount or hard-reload edge case), skip footer.
+  metaphorNameZh: string | null;
 }): Promise<Blob> {
-  const { presenceText, commitmentText, signOffDate, scores, doodleVariant, doodlePosIdx, doodleRotation } = opts;
+  const { presenceText, commitmentText, signOffDate, scores, doodleVariant, doodlePosIdx, doodleRotation, metaphorNameZh } = opts;
 
   // 等 webfont 加载——这步是 PNG 用 webfont 不 fallback 的关键 (跟旧版 B' 不同,
   // 旧版在 isolated origin 拿不到 webfont, 必须 fallback 到 system 楷体)。
@@ -940,6 +953,14 @@ async function renderCardToPng(opts: {
     ctx.fillStyle = "#a1a1aa";
     ctx.fillText("wheel of life", PNG_WIDTH / 2, PNG_HEIGHT - 70);
 
+    // Phase 3 — Stage 6 footer "今日 · {metaphor 中文名}". 位置: watermark 下方
+    // ~40px, zinc-500 small font. DOM <p text-xs text-zinc-500> 同步.
+    if (metaphorNameZh) {
+      ctx.font = '22px system-ui, -apple-system, "Helvetica Neue", sans-serif';
+      ctx.fillStyle = "#71717a"; // zinc-500
+      ctx.fillText(`今日 · ${metaphorNameZh}`, PNG_WIDTH / 2, PNG_HEIGHT - 30);
+    }
+
     // Phase 2 Sub-task 2 — doodle drawn last (overlay over wheel/text), at
     // random margin position with random tilt. PNG sizes 倍数 ~2.5x DOM (PNG
     // 1080 vs DOM ~400 mobile width).
@@ -1020,6 +1041,18 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>("eval");
   const [progress, setProgress] = useState(0);
   const [runId, setRunId] = useState(0);
+  // Phase 3 — visit-level metaphor pick. SSG-safe: useEffect 内 set, 不在
+  // useState init / render path. pick === null = pre-mount, 主 wheel SVG 默认
+  // 走 car 行为 (Phase 2 carry baseline), 渲染稳定. handleRestart / handleBack
+  // 不重 pick (visit-level 固定); 仅 hard reload 或 "再跑一次" 自然触发新 pick
+  // 的 case = 用户 reload 整 page (Date.now seed 变 → 新 metaphor).
+  // 2026-05-12 design hotfix: 改 handleRestart 路径重 pick (用户场景 §17 align,
+  // "再跑一次" 必须换 metaphor 才兑现 visit-pool 体感).
+  const [pick, setPick] = useState<MetaphorPick | null>(null);
+  useEffect(() => {
+    // Client-only: mount 后 set, 避免 SSG prerender / hydrate mismatch.
+    setPick(selectMetaphorForVisit());
+  }, []);
   // Phase 2 — placeholder pool: lazy init mount 时 random pick; useEffect 监听
   // mode 进入 "presence" 时 re-pick (cover "回去调整车轮再回来" case, SPA 不重
   // mount 但 mode reset → presence 流程会 re-pick).
@@ -1324,6 +1357,9 @@ export default function Home() {
   const startRide = useCallback(() => {
     setProgress(0);
     setRunId((id) => id + 1);
+    // Phase 3 — "再跑一次" 重 pick metaphor (用户场景 §17: visit-pool 体感
+    // 兑现 = 每次跑都可能换 metaphor). hard reload 也换 (Date.now seed 不同).
+    setPick(selectMetaphorForVisit());
     setMode("running");
     if (typeof window !== "undefined") {
       requestAnimationFrame(() => {
@@ -1357,6 +1393,8 @@ export default function Home() {
         doodleVariant: selectedDoodle,
         doodlePosIdx: selectedDoodlePosIdx,
         doodleRotation: selectedDoodleRotation,
+        // Phase 3 — Stage 6 footer "今日 · {metaphor 中文名}"
+        metaphorNameZh: pick ? METAPHOR_DISPLAY_NAME_ZH[pick.metaphor] : null,
       });
       const dateYmd = formatDateYMD(presence.at);
       const filename = `wheel-of-life-${dateYmd}.png`;
@@ -1411,7 +1449,7 @@ export default function Home() {
     } finally {
       setSharing(false);
     }
-  }, [presence, commitment, scores, sharing, selectedDoodle, selectedDoodlePosIdx, selectedDoodleRotation]);
+  }, [presence, commitment, scores, sharing, selectedDoodle, selectedDoodlePosIdx, selectedDoodleRotation, pick]);
 
   const handleBack = useCallback(() => {
     setMode("eval");
@@ -1851,6 +1889,16 @@ export default function Home() {
               <p className="font-en-hand text-sm tracking-wide text-zinc-400">
                 wheel of life
               </p>
+
+              {/* Phase 3 — Stage 6 footer "今日 · {metaphor 中文名}". Stage 3 ↔
+                  Stage 6 continuity: 用户看 metaphor 跑完, 卡片底部呼应 metaphor
+                  name, 避免 "我看的是饼干, 卡片是 abstract wheel" 体验断.
+                  pick 在 page 卸载前一直 hold (visit-level), 写到卡片时取 pick.metaphor. */}
+              {pick && (
+                <p className="text-xs tracking-wide text-zinc-500">
+                  今日 · {METAPHOR_DISPLAY_NAME_ZH[pick.metaphor]}
+                </p>
+              )}
             </div>
           </article>
 
@@ -1916,8 +1964,19 @@ export default function Home() {
           </h2>
           {/* Wheel SVG — Phase 1.5 装上 pointer 事件做 1st person 推扇区。
               touch-action: none 阻止 mobile 默认 pull-to-refresh / page scroll
-              在 wheel 区域上拦截 pointer move（关键 mobile fix）。 */}
+              在 wheel 区域上拦截 pointer move（关键 mobile fix）。
+              Phase 3 — running mode + non-car metaphor 时主 wheel SVG 隐藏,
+              MetaphorRenderer 用同尺寸容器替换 (Stage 1-2/4 仍用主 wheel,
+              Phase 2 sediment carry). pick === null 阶段 (pre-mount) 默认走
+              主 wheel render = car baseline 行为. */}
           <div className="w-full max-w-[340px] md:max-w-[440px]">
+            {isRunning && pick && pick.metaphor !== "car" ? (
+              <MetaphorRenderer
+                scores={scores}
+                metaphor={pick.metaphor}
+                visitSeed={pick.visitSeed}
+              />
+            ) : (
             <svg
               ref={wheelSvgRef}
               viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
@@ -2191,6 +2250,7 @@ export default function Home() {
                 );
               })()}
             </svg>
+            )}
           </div>
         </section>
 
@@ -2208,11 +2268,11 @@ export default function Home() {
                   生命之轮
                 </h1>
                 <p className="mt-3 text-base leading-relaxed text-zinc-600">
-                  {/* mobile (~380px) text-base 24 字会 wrap "车轮。" 单独到下行
-                      显得密 (liushu 截图反馈). 缩短到 18 字让 mobile 1 行,
-                      "你这辆人生马车的" 隐喻 anchor 已被 wheel 上方 sticky h2
-                      "我人生的马车" carry, framing 不需重复. */}
-                  圆心 = 0，外缘 = 10。画此刻你的车轮。
+                  {/* Phase 3 文案改造 — metaphor-agnostic framing (design §五,
+                      candidate B): "8 个方向，各推到你此刻感觉到的程度。圆心 0，
+                      外缘 10。" 不再绑车 metaphor, 跨 5 metaphor pool (车 / 饼干 /
+                      pizza / 盆栽 / 篝火) 都 fit. 操作明确 + 入门 framing 保留. */}
+                  8 个方向，各推到你此刻感觉到的程度。圆心 0，外缘 10。
                 </p>
                 <details className="mt-2 text-xs leading-relaxed text-zinc-400">
                   <summary className="cursor-pointer list-none underline-offset-2 hover:text-zinc-600 hover:underline [&::-webkit-details-marker]:hidden">
@@ -2348,7 +2408,11 @@ export default function Home() {
                 className="fade-rise text-3xl font-medium leading-snug tracking-tight text-zinc-900 md:text-4xl"
                 style={{ animationDelay: "1.2s" }}
               >
-                我人生这辆马车，路途平坦还是颠簸？
+                {/* Phase 3 文案改造 — Stage 4 reflect inquiry phrasing
+                    (design §五 candidate C): "颠簸" 保留 Phase 1.6 register
+                    continuity 但通用感受词不绑车 metaphor. 8 个方向 + 此刻最
+                    颠 = metaphor-agnostic 自反 anchor. */}
+                哪一面最让你感到颠簸？
               </h1>
               <div
                 className="fade-rise flex flex-col gap-3"
