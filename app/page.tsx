@@ -60,6 +60,117 @@ const PRESENCE_PLACEHOLDERS = [
   "看到了，我自己",               // 觉察 + 自我肯定 (积极)
   "这就是我，就这样",             // 平静接纳 (积极)
 ];
+// Phase 2 Sub-task 2 — 卡片小图画 doodle pool. Calvin & Hobbes 简笔风,
+// 出现在 done card "margin zone" 随机位置 + 随机倾斜 (像 Calvin & Hobbes
+// 漫画 margin 角落随手画的小图). Doodle pool 跟 placeholder 同 craft 哲学
+// — pool 里多 variants random pick per visit, register 一致但 phrase/visual
+// 不同, 单 visit 稳定不抖.
+type DoodleVariant = "stickFigure" | "animal" | "heart";
+const DOODLE_POOL: DoodleVariant[] = ["stickFigure", "animal", "heart"];
+
+// Doodle margin position pool (避开 wheel 中心 + 文字主区, 落在 card 角落 /
+// 边缘 / 文字之间空白). 每位置 random rotation small ±15° tilt 让感觉 organic.
+type DoodlePosition = {
+  // CSS positioning (% of card)
+  top?: string;
+  bottom?: string;
+  left?: string;
+  right?: string;
+  // PNG positioning (px in PNG canvas, 1080×1350)
+  pngX: number;
+  pngY: number;
+};
+const DOODLE_POSITIONS: DoodlePosition[] = [
+  { top: "5%", left: "6%", pngX: 80, pngY: 80 },
+  { top: "5%", right: "6%", pngX: 920, pngY: 80 },
+  { top: "38%", left: "4%", pngX: 60, pngY: 540 },
+  { top: "38%", right: "4%", pngX: 940, pngY: 540 },
+  { bottom: "22%", left: "8%", pngX: 100, pngY: 1010 },
+  { bottom: "22%", right: "8%", pngX: 900, pngY: 1010 },
+];
+
+// React inline JSX components (XSS-safe, no dangerouslySetInnerHTML)
+function DoodleStickFigure({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size * 1.25} viewBox="-20 -25 40 50">
+      <g fill="none" stroke="#52525b" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx={0} cy={-15} r={5} />
+        <circle cx={-1.8} cy={-16} r={0.6} fill="#52525b" stroke="none" />
+        <circle cx={1.8} cy={-16} r={0.6} fill="#52525b" stroke="none" />
+        <path d="M -2 -13.5 Q 0 -12 2 -13.5" />
+        <path d="M 0 -10 Q -0.3 -2 0.3 6" />
+        <path d="M 0 -7 Q -4 -10 -8 -14" />
+        <path d="M 0 -7 Q 4 -5 7 -3" />
+        <path d="M 0 6 Q -2 12 -4 18" />
+        <path d="M 0 6 Q 2 12 4 18" />
+      </g>
+    </svg>
+  );
+}
+
+function DoodleAnimal({ size = 36 }: { size?: number }) {
+  return (
+    <svg width={size} height={size * 0.68} viewBox="-22 -15 44 30">
+      <g fill="none" stroke="#52525b" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M -10 0 Q -12 -6 -7 -8 Q 0 -10 8 -8 Q 13 -6 11 0 Q 12 5 7 6 Q 0 7 -8 6 Q -12 5 -10 0 Z" fill="#fef3c7" fillOpacity={0.5} />
+        <path d="M -7 -7 L -8 -12 L -4 -9 Z" fill="#fef3c7" />
+        <path d="M 7 -7 L 8 -12 L 4 -9 Z" fill="#fef3c7" />
+        <circle cx={-3.5} cy={-3} r={0.8} fill="#52525b" stroke="none" />
+        <circle cx={3.5} cy={-3} r={0.8} fill="#52525b" stroke="none" />
+        <circle cx={0} cy={0.5} r={0.6} fill="#52525b" stroke="none" />
+        <path d="M -2 2 Q 0 3.5 2 2" />
+        <path d="M 11 0 Q 16 -3 14 -8" />
+      </g>
+    </svg>
+  );
+}
+
+function DoodleHeart({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="-10 -10 20 20">
+      <path d="M 0 6 Q -8 -2 -6 -6 Q -3 -9 0 -5 Q 3 -9 6 -6 Q 8 -2 0 6 Z" fill="#fda4af" stroke="#52525b" strokeWidth={1} strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// SVG string builders for Canvas PNG (parallel maintenance with React components above —
+// SVG defs 同步, 改一处两处都要改). Used in renderCardToPng to drawImage.
+function buildDoodleSvgString(variant: DoodleVariant, sizePx: number): string {
+  const ns = 'xmlns="http://www.w3.org/2000/svg"';
+  if (variant === "stickFigure") {
+    return `<svg ${ns} width="${sizePx}" height="${sizePx * 1.25}" viewBox="-20 -25 40 50">
+  <g fill="none" stroke="#52525b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="0" cy="-15" r="5"/>
+    <circle cx="-1.8" cy="-16" r="0.6" fill="#52525b" stroke="none"/>
+    <circle cx="1.8" cy="-16" r="0.6" fill="#52525b" stroke="none"/>
+    <path d="M -2 -13.5 Q 0 -12 2 -13.5"/>
+    <path d="M 0 -10 Q -0.3 -2 0.3 6"/>
+    <path d="M 0 -7 Q -4 -10 -8 -14"/>
+    <path d="M 0 -7 Q 4 -5 7 -3"/>
+    <path d="M 0 6 Q -2 12 -4 18"/>
+    <path d="M 0 6 Q 2 12 4 18"/>
+  </g>
+</svg>`;
+  } else if (variant === "animal") {
+    return `<svg ${ns} width="${sizePx}" height="${sizePx * 0.68}" viewBox="-22 -15 44 30">
+  <g fill="none" stroke="#52525b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M -10 0 Q -12 -6 -7 -8 Q 0 -10 8 -8 Q 13 -6 11 0 Q 12 5 7 6 Q 0 7 -8 6 Q -12 5 -10 0 Z" fill="#fef3c7" fill-opacity="0.5"/>
+    <path d="M -7 -7 L -8 -12 L -4 -9 Z" fill="#fef3c7"/>
+    <path d="M 7 -7 L 8 -12 L 4 -9 Z" fill="#fef3c7"/>
+    <circle cx="-3.5" cy="-3" r="0.8" fill="#52525b" stroke="none"/>
+    <circle cx="3.5" cy="-3" r="0.8" fill="#52525b" stroke="none"/>
+    <circle cx="0" cy="0.5" r="0.6" fill="#52525b" stroke="none"/>
+    <path d="M -2 2 Q 0 3.5 2 2"/>
+    <path d="M 11 0 Q 16 -3 14 -8"/>
+  </g>
+</svg>`;
+  } else {
+    return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-10 -10 20 20">
+  <path d="M 0 6 Q -8 -2 -6 -6 Q -3 -9 0 -5 Q 3 -9 6 -6 Q 8 -2 0 6 Z" fill="#fda4af" stroke="#52525b" stroke-width="1" stroke-linejoin="round"/>
+</svg>`;
+  }
+}
+
 const COMMITMENT_PLACEHOLDERS = [
   "今天做：先不做",                   // anti-commitment 摆烂诚实
   "这周给自己一个晚上不开手机",       // 自我关怀具体 ritual
@@ -620,8 +731,12 @@ async function renderCardToPng(opts: {
   commitmentText: string | null;
   signOffDate: string; // "YYYY.MM.DD" 格式 — N4 sign-off 派的右对齐 "— 2026.05.09"
   scores: Scores;
+  // Phase 2 Sub-task 2 — doodle params (variant + 位置 + 倾斜角)
+  doodleVariant: DoodleVariant;
+  doodlePosIdx: number;
+  doodleRotation: number;
 }): Promise<Blob> {
-  const { presenceText, commitmentText, signOffDate, scores } = opts;
+  const { presenceText, commitmentText, signOffDate, scores, doodleVariant, doodlePosIdx, doodleRotation } = opts;
 
   // 等 webfont 加载——这步是 PNG 用 webfont 不 fallback 的关键 (跟旧版 B' 不同,
   // 旧版在 isolated origin 拿不到 webfont, 必须 fallback 到 system 楷体)。
@@ -723,6 +838,39 @@ async function renderCardToPng(opts: {
     ctx.fillStyle = "#a1a1aa";
     ctx.fillText("wheel of life", PNG_WIDTH / 2, PNG_HEIGHT - 70);
 
+    // Phase 2 Sub-task 2 — doodle drawn last (overlay over wheel/text), at
+    // random margin position with random tilt. PNG sizes 倍数 ~2.5x DOM (PNG
+    // 1080 vs DOM ~400 mobile width).
+    const doodlePngSizes: Record<DoodleVariant, number> = {
+      stickFigure: 70,
+      animal: 95,
+      heart: 55,
+    };
+    const dSize = doodlePngSizes[doodleVariant];
+    const dHeight =
+      doodleVariant === "stickFigure" ? dSize * 1.25
+      : doodleVariant === "animal" ? dSize * 0.68
+      : dSize;
+    const doodleSvg = buildDoodleSvgString(doodleVariant, dSize);
+    const doodleBlob = new Blob([doodleSvg], { type: "image/svg+xml;charset=utf-8" });
+    const doodleUrl = URL.createObjectURL(doodleBlob);
+    try {
+      const doodleImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = (e) => reject(e);
+        im.src = doodleUrl;
+      });
+      const dPos = DOODLE_POSITIONS[doodlePosIdx];
+      ctx.save();
+      ctx.translate(dPos.pngX, dPos.pngY);
+      ctx.rotate((doodleRotation * Math.PI) / 180);
+      ctx.drawImage(doodleImg, -dSize / 2, -dHeight / 2, dSize, dHeight);
+      ctx.restore();
+    } finally {
+      URL.revokeObjectURL(doodleUrl);
+    }
+
     // Step 3: canvas → PNG blob
     const pngBlob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob((b) => resolve(b), "image/png", 1)
@@ -766,6 +914,18 @@ export default function Home() {
   );
   const [commitmentPlaceholder, setCommitmentPlaceholder] = useState(
     () => COMMITMENT_PLACEHOLDERS[Math.floor(Math.random() * COMMITMENT_PLACEHOLDERS.length)]
+  );
+  // Phase 2 Sub-task 2 — doodle pool: variant + 位置 + 倾斜角 各自 random pick.
+  // 跟 placeholder 同 useEffect re-pick (mode → "presence" 时一起 re-pick),
+  // 让 doodle 跟 placeholder 同步换 (一致 "新一轮反思" 体感).
+  const [selectedDoodle, setSelectedDoodle] = useState<DoodleVariant>(
+    () => DOODLE_POOL[Math.floor(Math.random() * DOODLE_POOL.length)]
+  );
+  const [selectedDoodlePosIdx, setSelectedDoodlePosIdx] = useState<number>(
+    () => Math.floor(Math.random() * DOODLE_POSITIONS.length)
+  );
+  const [selectedDoodleRotation, setSelectedDoodleRotation] = useState<number>(
+    () => Math.floor(Math.random() * 31) - 15 // -15° to +15°
   );
   // Stage 5 v2 transient state. presenceDraft is what the textarea holds while
   // the user types; presencePhase gates whether the witness affordance has
@@ -1042,6 +1202,9 @@ export default function Home() {
         commitmentText: commitment ? commitment.text : null,
         signOffDate,
         scores,
+        doodleVariant: selectedDoodle,
+        doodlePosIdx: selectedDoodlePosIdx,
+        doodleRotation: selectedDoodleRotation,
       });
       const dateYmd = formatDateYMD(presence.at);
       const filename = `wheel-of-life-${dateYmd}.png`;
@@ -1096,7 +1259,7 @@ export default function Home() {
     } finally {
       setSharing(false);
     }
-  }, [presence, commitment, scores, sharing]);
+  }, [presence, commitment, scores, sharing, selectedDoodle, selectedDoodlePosIdx, selectedDoodleRotation]);
 
   const handleBack = useCallback(() => {
     setMode("eval");
@@ -1207,6 +1370,14 @@ export default function Home() {
       setCommitmentPlaceholder(
         COMMITMENT_PLACEHOLDERS[Math.floor(Math.random() * COMMITMENT_PLACEHOLDERS.length)]
       );
+      // Doodle re-pick 同步 (variant + 位置 + 倾斜角)
+      setSelectedDoodle(
+        DOODLE_POOL[Math.floor(Math.random() * DOODLE_POOL.length)]
+      );
+      setSelectedDoodlePosIdx(
+        Math.floor(Math.random() * DOODLE_POSITIONS.length)
+      );
+      setSelectedDoodleRotation(Math.floor(Math.random() * 31) - 15);
     }
   }, [mode]);
 
@@ -1359,6 +1530,29 @@ export default function Home() {
             style={{ animationDelay: "0.1s" }}
             aria-label="留印卡片"
           >
+            {/* Phase 2 Sub-task 2 — doodle absolute positioned at random margin
+                spot + random tilt. variant + position + rotation 都 mode → presence
+                时一起 re-pick (跟 placeholder 同步, 一致"新一轮反思"). */}
+            {(() => {
+              const pos = DOODLE_POSITIONS[selectedDoodlePosIdx];
+              return (
+                <div
+                  className="pointer-events-none absolute z-10"
+                  style={{
+                    top: pos.top,
+                    bottom: pos.bottom,
+                    left: pos.left,
+                    right: pos.right,
+                    transform: `rotate(${selectedDoodleRotation}deg)`,
+                  }}
+                  aria-hidden="true"
+                >
+                  {selectedDoodle === "stickFigure" && <DoodleStickFigure size={28} />}
+                  {selectedDoodle === "animal" && <DoodleAnimal size={36} />}
+                  {selectedDoodle === "heart" && <DoodleHeart size={22} />}
+                </div>
+              );
+            })()}
             <div className="flex flex-col items-center gap-6">
               {/* Mini wheel — 200px N4 layout. mb-4 加在 flex gap-6 之外让
                   wheel ↓ presence 间距 effective 40px (vs 其它元素 24px) — wheel
