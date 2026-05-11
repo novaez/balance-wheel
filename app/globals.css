@@ -19,11 +19,11 @@ body {
     Arial, sans-serif;
 }
 
-/* Phase 2 视觉风格 — page bg via CSS var. default 米色, local hostname JS
-   override to baseline white (let liushu compare side by side). */
+/* Phase 2 视觉风格 — page bg via CSS var. liushu 选 baseline 白 (#fafafa)
+   final, hostname override 仍 keep for future A/B 切换便利. */
 :root {
-  --page-bg: #faf6ee;
-  --page-bg-95: rgba(250, 246, 238, 0.95);
+  --page-bg: #fafafa;
+  --page-bg-95: rgba(250, 250, 250, 0.95);
 }
 
 /* Range slider styling — keep monochrome so the wheel sectors are the only color source. */
