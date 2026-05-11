@@ -1628,7 +1628,7 @@ export default function Home() {
   if (isDone && presence) {
     return (
       <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
-        <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-6 px-6 py-12">
+        <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-6 px-6 pt-12 pb-24 md:pb-12">
           {/* Souvenir card — the only emotional outlet of the UI (圆桌 #1 #7).
               Phase 1.6 reframe v4 (N4 sign-off 派, 经 N7 真机反馈后回退): 没顶部
               header, 日期作整张卡 sign-off (commitment / presence 之后右对齐
@@ -1805,7 +1805,7 @@ export default function Home() {
           className={[
             "flex w-full flex-col items-center",
             "md:w-1/2 md:sticky md:top-10",
-            isEval ? "sticky top-0 z-10 bg-zinc-50/50 pt-4 pb-1 backdrop-blur" : "",
+            isEval ? "sticky top-0 z-10 bg-zinc-50/40 pt-4 pb-1" : "",
             "md:bg-transparent md:pt-0 md:pb-0 md:backdrop-blur-none",
           ]
             .filter(Boolean)
