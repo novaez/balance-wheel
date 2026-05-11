@@ -1066,6 +1066,25 @@ export default function Home() {
   const wheelSvgRef = useRef<SVGSVGElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
+  // Phase 2 视觉风格 A/B — local hostname override page-bg to baseline white
+  // (let liushu compare 米色 production vs baseline white local). Production
+  // (pages.dev) keeps CSS default 米色.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const h = window.location.hostname;
+    const isLocal =
+      h === "localhost" ||
+      /^(10\.|192\.168\.|100\.)/.test(h) ||
+      /^127\./.test(h);
+    if (isLocal) {
+      document.documentElement.style.setProperty("--page-bg", "#fafafa");
+      document.documentElement.style.setProperty(
+        "--page-bg-95",
+        "rgba(250, 250, 250, 0.95)"
+      );
+    }
+  }, []);
+
   // Hydrate from localStorage after mount (avoids SSR mismatch).
   useEffect(() => {
     const s = loadState();
@@ -1675,7 +1694,7 @@ export default function Home() {
 
   if (isDone && presence) {
     return (
-      <div className="min-h-screen w-full bg-[#faf6ee] text-zinc-900 font-sans">
+      <div className="min-h-screen w-full bg-[var(--page-bg)] text-zinc-900 font-sans">
         <main className="mx-auto flex max-w-md flex-col items-center gap-6 px-6 pb-12 pt-[calc(env(safe-area-inset-top)+4vh)] md:pt-12 md:pb-12 md:min-h-screen md:justify-center">
           {/* Souvenir card — the only emotional outlet of the UI (圆桌 #1 #7).
               Phase 1.6 reframe v4 (N4 sign-off 派, 经 N7 真机反馈后回退): 没顶部
@@ -1846,14 +1865,14 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-[#faf6ee] text-zinc-900 font-sans">
+    <div className="min-h-screen w-full bg-[var(--page-bg)] text-zinc-900 font-sans">
       <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 pb-6 pt-[calc(env(safe-area-inset-top)+0.5rem)] md:flex-row md:items-start md:gap-12 md:py-16 md:pt-16">
         {/* Left: wheel */}
         <section
           className={[
             "flex w-full flex-col items-center",
             "md:w-1/2 md:sticky md:top-10",
-            isEval ? "md:sticky md:top-10 md:z-10 md:bg-[#faf6ee]/95 md:backdrop-blur" : "",
+            isEval ? "md:sticky md:top-10 md:z-10 md:bg-[var(--page-bg-95)] md:backdrop-blur" : "",
             "md:bg-transparent md:pt-0 md:pb-0 md:backdrop-blur-none",
           ]
             .filter(Boolean)
