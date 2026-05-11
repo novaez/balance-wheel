@@ -1495,6 +1495,26 @@ export default function Home() {
   // 别处变 "presence" (e.g., reflect → presence 自然推进, 或 done 阶段 user
   // click 回去调整车轮 → eval 重走 → reflect → presence) 时重新 random pick.
   // 让"回去再回来" case 也看到不同 phrase, 不只 hard reload 才换.
+  // Safari iOS scroll reset on every mode / presencePhase change. Belt-and-
+  // suspender — Safari WebKit 在 keyboard dismiss / focus shift 时 auto-scroll
+  // 让 page 偏移, single scrollTo 不够. rAF + 3 setTimeout (覆盖 ~350ms 含
+  // keyboard 收起动画).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const scrollAll = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    requestAnimationFrame(scrollAll);
+    const t1 = setTimeout(scrollAll, 100);
+    const t2 = setTimeout(scrollAll, 350);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [mode, presencePhase]);
+
   useEffect(() => {
     if (mode === "presence") {
       setPresencePlaceholder(
