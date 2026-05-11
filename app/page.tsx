@@ -1798,7 +1798,11 @@ export default function Home() {
                   生命之轮
                 </h1>
                 <p className="mt-3 text-base leading-relaxed text-zinc-600">
-                  圆心 = 0，外缘 = 10。画出此刻你这辆人生马车的车轮。
+                  {/* mobile (~380px) text-base 24 字会 wrap "车轮。" 单独到下行
+                      显得密 (liushu 截图反馈). 缩短到 18 字让 mobile 1 行,
+                      "你这辆人生马车的" 隐喻 anchor 已被 wheel 上方 sticky h2
+                      "我人生的马车" carry, framing 不需重复. */}
+                  圆心 = 0，外缘 = 10。画此刻你的车轮。
                 </p>
                 <details className="mt-2 text-xs leading-relaxed text-zinc-400">
                   <summary className="cursor-pointer list-none underline-offset-2 hover:text-zinc-600 hover:underline [&::-webkit-details-marker]:hidden">
@@ -1811,7 +1815,7 @@ export default function Home() {
                     </p>
                     <p>
                       生命之轮帮你看到不同领域目前正在如何影响你的生活。想想看：如果你人生的马车就在这一车轮上前进，你的路途会有多平坦
-                      / 颠簸？生命之轮还会提供给我们一个未来工作的方向。
+                      / 颠簸？生命之轮还会让我们看到自己想往哪个方向走。
                     </p>
                   </div>
                 </details>
