@@ -30,14 +30,37 @@ const MIN_SCORE = 0;
 const MAX_SCORE = 10;
 const PRESENCE_MAX_LEN = 240;
 const COMMITMENT_MAX_LEN = 80;
-// Phase 2 register craft — placeholder 字面值. 圆桌 4 "成熟的不端庄" register
-// anchor. 用户点 commit button (或 mobile 输入法对勾) 时若 draft 空, fall
-// back 到这个值作为 user voice (主动 click = user-initiated produce, sequence
-// 守则 reframe). Note: commitment fall back 等于 commitment "默认值实际做了",
-// 跟圆桌 4 §双守则覆盖 "commitment 默认值不做" 有 narrative tension —
-// 2026-05-10 liushu 转向, 圆桌 4 doc 同步 amend.
-const PRESENCE_PLACEHOLDER = "嗯，颠";  // P3, 李四 anchor "放假的车" 极简 echo
-const COMMITMENT_PLACEHOLDER = "今天做：先不做";  // C1, register anchor 直接落地
+// Phase 2 register craft — placeholder pool. Co-Active NCRW essence:
+// 自我接纳 (presence 看见此刻不评判) + 自我权威 (commitment user 自己定义
+// 下一步, 不被 product 推). 句式跳脱单一结构, 跨"摆烂式接纳/觉察觉知/真诚
+// 情绪/Co-Active 经典 X分→Y分/自我关怀具体行动" multiple facets.
+// 用户主动 click commit signal (button click / Return key keydown / Form Assistant
+// Done blur / visualViewport keyboard dismiss) 时若 draft 空, fall back 到选中
+// 的 placeholder 作为 user voice (sequence 守则 reframe: user 主动接受 ≠
+// product 强加). 单 visit 选一个 (page mount lazy init), 多次 visit 看到不同
+// facet 让 register 复合不单调.
+// Note: commitment fall back 等于 commitment "默认值实际做了", 跟圆桌 4
+// §双守则覆盖 narrative tension — 2026-05-11 liushu 转向, 圆桌 4 doc 同步 amend.
+const PRESENCE_PLACEHOLDERS = [
+  "嗯，颠",                       // 极简反应 (李四 anchor "放假的车" echo)
+  "看见了",                       // 觉察
+  "今天好像就是这样",             // 接纳 + 不评判
+  "这一阵子，真的累",             // 真诚情绪
+  "原来这就是现在的我",           // 觉察 + 接纳
+  "心里有个角落空着",             // 诗意觉察
+  "好像也没那么糟",               // 反向接纳
+  "怎么觉得有点空",               // 真诚情绪
+];
+const COMMITMENT_PLACEHOLDERS = [
+  "我想把娱乐与休闲从 3 分做到 7 分", // Co-Active wheel of life 经典 action
+  "今天做：先不做",                   // anti-commitment 摆烂诚实
+  "这周给自己一个晚上不开手机",       // 自我关怀具体
+  "下周约老朋友吃饭",                 // 关系投资
+  "今晚早睡 1 小时",                  // 自我关怀小行动
+  "试试每天写三句话给自己",           // 自我关怀 ritual
+  "这件事先放一放",                   // 接纳放手
+  "跟自己道个歉",                     // 自我关怀
+];
 
 type Scores = number[]; // length 8, each 0..10 integer
 type Presence = { text: string; at: string };
@@ -722,6 +745,15 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>("eval");
   const [progress, setProgress] = useState(0);
   const [runId, setRunId] = useState(0);
+  // Phase 2 — placeholder pool 单 visit 随机选一 (lazy init = mount 时一次 pick,
+  // SPA 内不变 / hard reload 重 mount 才重选). 用户多次 visit 看到 register 一致
+  // 但 phrase 不同, craft 厚度提升不刻意.
+  const [presencePlaceholder] = useState(
+    () => PRESENCE_PLACEHOLDERS[Math.floor(Math.random() * PRESENCE_PLACEHOLDERS.length)]
+  );
+  const [commitmentPlaceholder] = useState(
+    () => COMMITMENT_PLACEHOLDERS[Math.floor(Math.random() * COMMITMENT_PLACEHOLDERS.length)]
+  );
   // Stage 5 v2 transient state. presenceDraft is what the textarea holds while
   // the user types; presencePhase gates whether the witness affordance has
   // fired (input → witnessed). commitDraft is the optional follow-up.
@@ -1102,20 +1134,20 @@ export default function Home() {
     // 一致 (placeholder = default value 转向, sequence 守则 reframe).
     // side effect: tap outside input 也 commit, 但 presence input phase
     // 失焦 = user 意图 done, 接受 implicit commit.
-    witnessNow(presenceDraft.trim() || PRESENCE_PLACEHOLDER);
+    witnessNow(presenceDraft.trim() || presencePlaceholder);
   }, [presenceDraft, witnessNow]);
 
   const handleWitnessClick = useCallback(() => {
     // 主动点 = user-initiated produce; 空 draft fall back 到 placeholder 作 user voice.
     // blur path 不 fall back (avoid implicit commit on focus loss).
-    witnessNow(presenceDraft.trim() || PRESENCE_PLACEHOLDER);
+    witnessNow(presenceDraft.trim() || presencePlaceholder);
   }, [presenceDraft, witnessNow]);
 
   const handleFinalize = useCallback(() => {
     // 主动点 "去看留印卡片" 或 mobile 对勾 = user-initiated; 空 commit fall back
     // 到 placeholder 作 user voice (跟 presence handleWitnessClick 对称).
     // Note: 这意味着 commitment 不再 optional — 卡片必显示 commit row.
-    const commitText = commitDraft.trim() || COMMITMENT_PLACEHOLDER;
+    const commitText = commitDraft.trim() || commitmentPlaceholder;
     setCommitment({
       text: commitText.slice(0, COMMITMENT_MAX_LEN),
       at: new Date().toISOString(),
@@ -1142,7 +1174,7 @@ export default function Home() {
       const isOpen = vv.height < window.innerHeight - KEYBOARD_THRESHOLD;
       if (keyboardWasOpen && !isOpen) {
         // Keyboard 刚 dismiss (工具栏对勾 / tap outside) → user-initiated commit
-        witnessNow(presenceDraft.trim() || PRESENCE_PLACEHOLDER);
+        witnessNow(presenceDraft.trim() || presencePlaceholder);
       }
       keyboardWasOpen = isOpen;
     };
@@ -1923,7 +1955,11 @@ export default function Home() {
               {presencePhase === "input" ? (
                 <>
                   <p className="text-2xl font-medium leading-snug tracking-tight text-zinc-700 md:text-3xl">
-                    看着这辆马车，我此刻感觉到——
+                    {/* whitespace-nowrap on "感觉到——" 避免微信内嵌 webview 等
+                        窄 viewport 把 "——" 单独 wrap 到下一行 (em dash 是
+                        line-breakable 字符, 默认 wrap 行为视觉断裂). 整 unit
+                        nowrap, 空间不够时整 unit 换下一行 (dash 跟字一起). */}
+                    看着这辆马车，我此刻<span className="whitespace-nowrap">感觉到——</span>
                   </p>
                   <input
                     type="text"
@@ -1942,7 +1978,7 @@ export default function Home() {
                     }}
                     autoFocus
                     maxLength={PRESENCE_MAX_LEN}
-                    placeholder={PRESENCE_PLACEHOLDER}
+                    placeholder={presencePlaceholder}
                     enterKeyHint="done"
                     className="w-full border-none bg-transparent p-0 text-2xl font-light leading-relaxed text-zinc-900 placeholder:text-zinc-300 focus:outline-none md:text-3xl"
                     aria-label="我此刻感觉到"
@@ -1986,7 +2022,7 @@ export default function Home() {
                           handleFinalize();
                         }
                       }}
-                      placeholder={COMMITMENT_PLACEHOLDER}
+                      placeholder={commitmentPlaceholder}
                       enterKeyHint="done"
                       maxLength={COMMITMENT_MAX_LEN}
                       className="w-full border-b border-zinc-200 bg-transparent py-2 text-base text-zinc-900 placeholder:text-zinc-300 focus:border-zinc-900 focus:outline-none"
