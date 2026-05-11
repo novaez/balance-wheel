@@ -1380,12 +1380,16 @@ export default function Home() {
     setEvalPhase("ready");
     setPressing(null);
     setProgress(0);
-    // 重置 scroll position 避免 done page scroll 残留导致 eval page 显示位置过高
-    // behavior 'instant' 让 scroll 跟 render 同 frame (smooth 有动画延迟 Safari
-    // 在 done -> eval mode change 时 user 看到 eval renders at scrolled position
-    // 然后 smooth animate to top, 视觉 flash 像"过高").
+    // 重置 scroll position 避免 done page scroll 残留导致 eval page 显示位置过高.
+    // Safari iOS scroll API quirky — 单 window.scrollTo 不一定 work. 用 rAF
+    // delay 到 React re-render 后 + 3 targets (window / documentElement / body)
+    // belt-and-suspenders 兼容 iOS Safari WebKit scroll bug.
     if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+      requestAnimationFrame(() => {
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      });
     }
   }, []);
 
