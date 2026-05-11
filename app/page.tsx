@@ -1071,6 +1071,15 @@ export default function Home() {
   const presenceFocusTimeRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
 
+  // Disable browser scroll restoration — Safari iOS otherwise restores scroll
+  // on SPA state-driven layout change.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+  }, []);
+
   // Phase 2 视觉风格 A/B — local hostname override page-bg to baseline white
   // (let liushu compare 米色 production vs baseline white local). Production
   // (pages.dev) keeps CSS default 米色.
