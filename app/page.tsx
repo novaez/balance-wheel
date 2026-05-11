@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo } from "react";
 
 // 8 dimensions, clockwise starting from 12 o'clock.
 const DIMENSIONS = [
@@ -1457,21 +1457,25 @@ export default function Home() {
   );
 
   const handlePresenceBlur = useCallback(() => {
-    // blur 不 fall back placeholder, 只 user explicit click "我说完了" / Return
-    // key / Form Assistant Done bar 才 commit. 之前 blur fall back 让 WeChat
-    // scrollIntoView 触发的 spurious blur 也 commit 跳 witness, bug. user 想
-    // commit 永远 explicit click button 或 Return key, 不靠 blur auto-commit.
-    witnessNow(presenceDraft);
-  }, [presenceDraft, witnessNow]);
+    // blur 完全 no-op. user 必须 explicit click "我说完了" 或 Return key / Form
+    // Assistant Done 才 commit. 之前 witnessNow(presenceDraft) 在 draft 有内容
+    // 时 spurious blur (WeChat scrollIntoView 动画 trigger) 仍 commit 跳 witness
+    // — user 没主动 click 但 page 自动 finish, bug 根因. blur 不 commit 完全
+    // 消除 spurious blur 副作用.
+  }, []);
 
   const handleWitnessClick = useCallback(() => {
     // 主动点 = user-initiated produce; 空 draft fall back 到 placeholder 作 user voice.
-    // blur path 不 fall back (avoid implicit commit on focus loss).
-    // Safari iOS: blur active input 先 (witnessNow 内 scroll reset 才不被 focus
-    // preserve override).
+    // Safari iOS: blur active input + sync scroll to top BEFORE setState. Safari
+    // 否则 preserve scroll relative to focused input, override 后续 scroll reset.
     if (typeof document !== "undefined") {
       const active = document.activeElement;
       if (active instanceof HTMLElement) active.blur();
+    }
+    if (typeof window !== "undefined") {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
     }
     witnessNow(presenceDraft.trim() || presencePlaceholder);
   }, [presenceDraft, witnessNow, presencePlaceholder]);
@@ -1546,29 +1550,29 @@ export default function Home() {
   // mode 一直 "presence" 不变, 上面的 useEffect [mode] dep 不 trigger. 需要单独
   // 监听 presencePhase. 只 fire on "witnessed" 状态, "input" 状态不 reset (避
   // 免 override keyboard auto-scroll).
-  useEffect(() => {
+  // useLayoutEffect (sync after DOM mutation, before browser paint) preempts
+  // Safari iOS post-render scroll adjustment. Multi-pass cover edge cases.
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
     if (presencePhase !== "witnessed") return;
     const scrollAll = () => {
-      // Blur active element 先, 否则 Safari iOS 会 preserve scroll 让 focused
-      // element visible, override 我们的 scrollTo. presence input blur 已 implicit
-      // (phase change unmount), 但 commit input 可能 auto-focus 或 残留 focus.
       const active = document.activeElement as HTMLElement | null;
-      if (active && active.tagName === "INPUT") {
-        active.blur();
-      }
+      if (active && active.tagName === "INPUT") active.blur();
       window.scrollTo(0, 0);
       document.documentElement.scrollTop = 0;
       document.body.scrollTop = 0;
     };
+    scrollAll();
     requestAnimationFrame(scrollAll);
-    // setTimeouts ok here because witnessed phase 无 autoFocus, 不冲突
-    // keyboard auto-scroll. multi-pass cover Safari iOS scroll quirks.
-    const t1 = setTimeout(scrollAll, 100);
-    const t2 = setTimeout(scrollAll, 350);
+    const t1 = setTimeout(scrollAll, 50);
+    const t2 = setTimeout(scrollAll, 150);
+    const t3 = setTimeout(scrollAll, 350);
+    const t4 = setTimeout(scrollAll, 600);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
     };
   }, [presencePhase]);
 
