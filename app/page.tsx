@@ -1096,7 +1096,13 @@ export default function Home() {
   );
 
   const handlePresenceBlur = useCallback(() => {
-    witnessNow(presenceDraft);
+    // 上面对勾 (Safari Form Assistant Bar Done) 触发 input blur (Done 内部
+    // call activeElement.blur()), 期待 commit (跟主动 click "我说完了" /
+    // 下面 Return key 对称). 空 draft fall back 到 placeholder 跟其它路径
+    // 一致 (placeholder = default value 转向, sequence 守则 reframe).
+    // side effect: tap outside input 也 commit, 但 presence input phase
+    // 失焦 = user 意图 done, 接受 implicit commit.
+    witnessNow(presenceDraft.trim() || PRESENCE_PLACEHOLDER);
   }, [presenceDraft, witnessNow]);
 
   const handleWitnessClick = useCallback(() => {
