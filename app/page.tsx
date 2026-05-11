@@ -33,12 +33,17 @@ const COMMITMENT_MAX_LEN = 80;
 // Phase 2 register craft — placeholder pool. Co-Active NCRW essence:
 // 自我接纳 (presence 看见此刻不评判) + 自我权威 (commitment user 自己定义
 // 下一步, 不被 product 推). 句式跳脱单一结构, 跨"摆烂式接纳/觉察觉知/真诚
-// 情绪/Co-Active 经典 X分→Y分/自我关怀具体行动" multiple facets.
+// 情绪/自我关怀行动/领域泛化 fuzz" multiple facets.
+// NCRW filter: 不用 user 实际 scores 派生 phrase (product 看 user 状态 →
+// propose 具体行动 = 违反 sequence 守则). 不用 specific score 数 (3→7 这种,
+// 跟 user 实际可能不符 = 驴唇不对马嘴). 不用"事"字 (生命之轮是 8 领域不是
+// "事"). commitment 用领域泛化 fuzz ("我想在 xxx" / "想多照顾一个领域") 让
+// user 自己填具体维度.
 // 用户主动 click commit signal (button click / Return key keydown / Form Assistant
 // Done blur / visualViewport keyboard dismiss) 时若 draft 空, fall back 到选中
 // 的 placeholder 作为 user voice (sequence 守则 reframe: user 主动接受 ≠
-// product 强加). 单 visit 选一个 (page mount lazy init), 多次 visit 看到不同
-// facet 让 register 复合不单调.
+// product 强加). 每次进入 presence input 阶段 re-pick (useEffect on mode change),
+// 让"回去调整车轮再回来" 也看到不同 phrase.
 // Note: commitment fall back 等于 commitment "默认值实际做了", 跟圆桌 4
 // §双守则覆盖 narrative tension — 2026-05-11 liushu 转向, 圆桌 4 doc 同步 amend.
 const PRESENCE_PLACEHOLDERS = [
@@ -52,14 +57,14 @@ const PRESENCE_PLACEHOLDERS = [
   "怎么觉得有点空",               // 真诚情绪
 ];
 const COMMITMENT_PLACEHOLDERS = [
-  "我想把娱乐与休闲从 3 分做到 7 分", // Co-Active wheel of life 经典 action
   "今天做：先不做",                   // anti-commitment 摆烂诚实
-  "这周给自己一个晚上不开手机",       // 自我关怀具体
-  "下周约老朋友吃饭",                 // 关系投资
-  "今晚早睡 1 小时",                  // 自我关怀小行动
+  "这周给自己一个晚上不开手机",       // 自我关怀具体 ritual
+  "下周约老朋友吃饭",                 // 关系投资 (家庭/朋友领域)
+  "今晚早睡 1 小时",                  // 自我关怀小行动 (健康领域)
   "试试每天写三句话给自己",           // 自我关怀 ritual
-  "这件事先放一放",                   // 接纳放手
   "跟自己道个歉",                     // 自我关怀
+  "想在某一个领域多投入",             // 领域泛化 fuzz (NCRW: user 自己选)
+  "下个月想往前挪一点",               // 模糊推进 (避开 specific score)
 ];
 
 type Scores = number[]; // length 8, each 0..10 integer
@@ -745,13 +750,13 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>("eval");
   const [progress, setProgress] = useState(0);
   const [runId, setRunId] = useState(0);
-  // Phase 2 — placeholder pool 单 visit 随机选一 (lazy init = mount 时一次 pick,
-  // SPA 内不变 / hard reload 重 mount 才重选). 用户多次 visit 看到 register 一致
-  // 但 phrase 不同, craft 厚度提升不刻意.
-  const [presencePlaceholder] = useState(
+  // Phase 2 — placeholder pool: lazy init mount 时 random pick; useEffect 监听
+  // mode 进入 "presence" 时 re-pick (cover "回去调整车轮再回来" case, SPA 不重
+  // mount 但 mode reset → presence 流程会 re-pick).
+  const [presencePlaceholder, setPresencePlaceholder] = useState(
     () => PRESENCE_PLACEHOLDERS[Math.floor(Math.random() * PRESENCE_PLACEHOLDERS.length)]
   );
-  const [commitmentPlaceholder] = useState(
+  const [commitmentPlaceholder, setCommitmentPlaceholder] = useState(
     () => COMMITMENT_PLACEHOLDERS[Math.floor(Math.random() * COMMITMENT_PLACEHOLDERS.length)]
   );
   // Stage 5 v2 transient state. presenceDraft is what the textarea holds while
@@ -1181,6 +1186,21 @@ export default function Home() {
     vv.addEventListener("resize", handleResize);
     return () => vv.removeEventListener("resize", handleResize);
   }, [mode, presencePhase, presenceDraft, witnessNow]);
+
+  // Phase 2 — placeholder re-pick on entering presence flow. SPA 内 mode 从
+  // 别处变 "presence" (e.g., reflect → presence 自然推进, 或 done 阶段 user
+  // click 回去调整车轮 → eval 重走 → reflect → presence) 时重新 random pick.
+  // 让"回去再回来" case 也看到不同 phrase, 不只 hard reload 才换.
+  useEffect(() => {
+    if (mode === "presence") {
+      setPresencePlaceholder(
+        PRESENCE_PLACEHOLDERS[Math.floor(Math.random() * PRESENCE_PLACEHOLDERS.length)]
+      );
+      setCommitmentPlaceholder(
+        COMMITMENT_PLACEHOLDERS[Math.floor(Math.random() * COMMITMENT_PLACEHOLDERS.length)]
+      );
+    }
+  }, [mode]);
 
   const isEval = mode === "eval";
   const isRunning = mode === "running";
@@ -1804,22 +1824,10 @@ export default function Home() {
                       : `${touched.filter(Boolean).length} / 8 — 继续推完剩下的方向。`}
                   </p>
                 )}
-                {evalPhase === "connect" && (
-                  <p
-                    key="hint-connect"
-                    className="fade-rise text-sm leading-relaxed text-zinc-500"
-                  >
-                    把你伸到的位置连起来，看见你的车轮。
-                  </p>
-                )}
-                {evalPhase === "shape" && (
-                  <p
-                    key="hint-shape"
-                    className="fade-rise text-sm leading-relaxed text-zinc-500"
-                  >
-                    这是你的车轮此刻的形状。
-                  </p>
-                )}
+                {/* Phase 2 — connect/shape phase hints 删除 (朋友反馈"填完色后
+                    最后一行很快变化看不过来"). 这两 phase 自动 < 2s, hint 文字
+                    闪一下不可读, "克制" UI 原则下 silent 即可. input + ready
+                    保留 (user-driven phases needed cue). */}
                 {evalPhase === "ready" && (
                   <p
                     key="hint-ready"
