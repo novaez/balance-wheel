@@ -1140,13 +1140,13 @@ export default function Home() {
     // side effect: tap outside input 也 commit, 但 presence input phase
     // 失焦 = user 意图 done, 接受 implicit commit.
     witnessNow(presenceDraft.trim() || presencePlaceholder);
-  }, [presenceDraft, witnessNow]);
+  }, [presenceDraft, witnessNow, presencePlaceholder]);
 
   const handleWitnessClick = useCallback(() => {
     // 主动点 = user-initiated produce; 空 draft fall back 到 placeholder 作 user voice.
     // blur path 不 fall back (avoid implicit commit on focus loss).
     witnessNow(presenceDraft.trim() || presencePlaceholder);
-  }, [presenceDraft, witnessNow]);
+  }, [presenceDraft, witnessNow, presencePlaceholder]);
 
   const handleFinalize = useCallback(() => {
     // 主动点 "去看留印卡片" 或 mobile 对勾 = user-initiated; 空 commit fall back
@@ -1161,7 +1161,7 @@ export default function Home() {
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
-  }, [commitDraft]);
+  }, [commitDraft, commitmentPlaceholder]);
 
   // Mobile 工具栏对勾 (iOS 拼音键盘 / 九宫格 — 没 Return key, 工具栏对勾是
   // 唯一"完成"入口) 不发 keydown event, 也不一定 trigger blur (iOS 16+ 倾向
@@ -1185,7 +1185,7 @@ export default function Home() {
     };
     vv.addEventListener("resize", handleResize);
     return () => vv.removeEventListener("resize", handleResize);
-  }, [mode, presencePhase, presenceDraft, witnessNow]);
+  }, [mode, presencePhase, presenceDraft, witnessNow, presencePlaceholder]);
 
   // Phase 2 — placeholder re-pick on entering presence flow. SPA 内 mode 从
   // 别处变 "presence" (e.g., reflect → presence 自然推进, 或 done 阶段 user
@@ -1781,33 +1781,14 @@ export default function Home() {
           {isEval ? (
             <>
               <header className="mb-6">
-                <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
-                  生命之轮
-                </h1>
-                {/* Phase 1.5 — 入口 framing block。22 字 hook 显眼锚 "圆心 = 0
-                    / 外缘 = 10 / 马车隐喻"；详情段落收在 <details> 里默认
-                    收起，遵守原则 7 克制 UI——hook 不抢 wheel 视觉，需要更多
-                    引导的用户主动展开。 */}
-                <p className="mt-3 text-base leading-relaxed text-zinc-600">
+                {/* Phase 2 — 朋友反馈 4 行太多 (h1 / framing / details summary / hint).
+                    删 h1 "生命之轮" (wheel 上方 sticky h2 "我人生的马车" 已是 page
+                    anchor, h1 重复 brand) + 删 <details>"完整说明 / 怎么玩" 整段
+                    (wheel 视觉 + framing 自己说话, 不需要 product 解释 wheel of life).
+                    留 framing 核心 instruction (Co-Active wheel of life 经典锚点). */}
+                <p className="text-base leading-relaxed text-zinc-600">
                   圆心 = 0，外缘 = 10。画出此刻你这辆人生马车的车轮。
                 </p>
-                <details className="mt-2 text-sm leading-relaxed text-zinc-500">
-                  <summary className="cursor-pointer list-none text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline [&::-webkit-details-marker]:hidden">
-                    完整说明 / 怎么玩
-                  </summary>
-                  {/* 经典 wheel of life 文案（润色版）：保留 8 领域 / 满意度 /
-                      圆心 0 外缘 10 / 重新画出此刻 / 马车隐喻 / 未来方向 essence。 */}
-                  <div className="mt-3 space-y-3 text-zinc-600">
-                    <p>
-                      生命之轮的 8 个区块代表你生命中的 8 个不同领域。请为你此时此刻这些领域的满意程度打分——圆心代表 0
-                      分，外缘代表 10 分。分数越低，外缘越靠近圆心。通过你的分数，重新画出此刻的生命之轮。
-                    </p>
-                    <p>
-                      生命之轮帮你看到不同领域目前正在如何影响你的生活。想想看：如果你人生的马车就在这一车轮上前进，你的路途会有多平坦
-                      / 颠簸？生命之轮还会提供给我们一个未来工作的方向。
-                    </p>
-                  </div>
-                </details>
               </header>
 
               {/* 操作提示 — 跟 framing 区分开（一个是"为什么"，一个是"怎么做"）。
