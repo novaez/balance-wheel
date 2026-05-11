@@ -1132,13 +1132,14 @@ export default function Home() {
   useEffect(() => {
     if (mode !== "eval") return;
     if (evalPhase === "connect") {
-      // outline 连线动画 ~1.2s，结束后进 shape
-      const t = window.setTimeout(() => setEvalPhase("shape"), 1200);
+      // outline 连线动画 ~2.0s (Phase 2 加重: 1.2 → 2.0 让 outline drawing 占
+      // 用 "ready 出现前的空白时间", 用户视觉 follow wheel 描边过程不空虚)
+      const t = window.setTimeout(() => setEvalPhase("shape"), 2000);
       return () => window.clearTimeout(t);
     }
     if (evalPhase === "shape") {
-      // 整轮 bob ~1.2s，结束后 ready（按钮 fade-rise）
-      const t = window.setTimeout(() => setEvalPhase("ready"), 1200);
+      // 整轮 bob + outline flash ~1.5s (Phase 2 加重: 0.7→1.5 flash duration)
+      const t = window.setTimeout(() => setEvalPhase("ready"), 1500);
       return () => window.clearTimeout(t);
     }
   }, [evalPhase, mode]);
