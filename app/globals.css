@@ -169,6 +169,23 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   stroke-width: 1.2;
 }
 
+/* Phase 2 craft 4 — 蜡屑掉落: press release 时 spawn 7 颗粒子在 sector tip,
+   CSS animation 自动 fall + drift + fade. translate via CSS vars --wax-vx/-vy
+   (px units). 1.4s ease-in 让粒子加速 falling 像 gravity. score=0 时 not spawn. */
+@keyframes wax-fall {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(calc(var(--wax-vx) * 1px), calc(var(--wax-vy) * 1px));
+    opacity: 0;
+  }
+}
+.wax-particle {
+  animation: wax-fall 1.4s ease-in forwards;
+}
+
 /* Phase 2 — Stage 4 reflect 阶段 wheel mild rock. 强化 "颠/平" inquiry 体感,
    wheel 微微摇 ±0.5° 暗示 still settling. subtle 不 distracting. */
 @keyframes reflect-wheel-rock {
