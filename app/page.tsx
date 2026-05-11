@@ -1288,7 +1288,11 @@ export default function Home() {
     setRunId((id) => id + 1);
     setMode("running");
     if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      requestAnimationFrame(() => {
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      });
     }
   }, []);
 
@@ -1413,7 +1417,11 @@ export default function Home() {
     setPresence({ text: text.slice(0, PRESENCE_MAX_LEN), at: new Date().toISOString() });
     setPresencePhase("witnessed");
     if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      requestAnimationFrame(() => {
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      });
     }
   }, []);
 
@@ -1451,7 +1459,11 @@ export default function Home() {
     });
     setMode("done");
     if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      requestAnimationFrame(() => {
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      });
     }
   }, [commitDraft, commitmentPlaceholder]);
 
