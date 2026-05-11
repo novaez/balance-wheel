@@ -65,8 +65,11 @@ const PRESENCE_PLACEHOLDERS = [
 // 漫画 margin 角落随手画的小图). Doodle pool 跟 placeholder 同 craft 哲学
 // — pool 里多 variants random pick per visit, register 一致但 phrase/visual
 // 不同, 单 visit 稳定不抖.
-type DoodleVariant = "stickFigure" | "animal" | "heart";
-const DOODLE_POOL: DoodleVariant[] = ["stickFigure", "animal", "heart"];
+type DoodleVariant = "stickFigure" | "animal" | "heart" | "cloud" | "sun" | "moon" | "star" | "cup";
+const DOODLE_POOL: DoodleVariant[] = [
+  "stickFigure", "animal", "heart",
+  "cloud", "sun", "moon", "star", "cup",
+];
 
 // Doodle margin position pool (避开 wheel 中心 + 文字主区, 落在 card 角落 /
 // 边缘 / 文字之间空白). 每位置 random rotation small ±15° tilt 让感觉 organic.
@@ -133,12 +136,75 @@ function DoodleHeart({ size = 22 }: { size?: number }) {
   );
 }
 
+function DoodleCloud({ size = 38 }: { size?: number }) {
+  return (
+    <svg width={size} height={size * 0.42} viewBox="-25 -10 50 20">
+      <path
+        d="M -18 4 Q -22 -3 -14 -5 Q -8 -10 0 -7 Q 8 -10 14 -5 Q 22 -3 18 4 L 14 5 L -14 5 Z"
+        fill="white" stroke="#52525b" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function DoodleSun({ size = 30 }: { size?: number }) {
+  const rays = [
+    "M 0 -10 L 0 -14", "M 7.07 -7.07 L 9.9 -9.9", "M 10 0 L 14 0", "M 7.07 7.07 L 9.9 9.9",
+    "M 0 10 L 0 14", "M -7.07 7.07 L -9.9 9.9", "M -10 0 L -14 0", "M -7.07 -7.07 L -9.9 -9.9",
+  ];
+  return (
+    <svg width={size} height={size} viewBox="-15 -15 30 30">
+      <g fill="none" stroke="#52525b" strokeWidth={1.6} strokeLinecap="round">
+        <circle cx={0} cy={0} r={6} fill="#fef9c3" />
+        {rays.map((d, i) => <path key={i} d={d} />)}
+      </g>
+    </svg>
+  );
+}
+
+function DoodleMoon({ size = 24 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="-10 -10 20 20">
+      <path
+        d="M 4 -7 Q -8 -3 -8 4 Q -3 9 4 7 Q -2 4 -2 0 Q -2 -4 4 -7 Z"
+        fill="#fef9c3" stroke="#52525b" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function DoodleStar({ size = 26 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="-10 -10 20 20">
+      <path
+        d="M 0 -8 L 2.4 -2.5 L 8 -2.5 L 3.5 1 L 5.5 7 L 0 3.5 L -5.5 7 L -3.5 1 L -8 -2.5 L -2.4 -2.5 Z"
+        fill="#fef3c7" stroke="#52525b" strokeWidth={1.4} strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function DoodleCup({ size = 26 }: { size?: number }) {
+  return (
+    <svg width={size} height={size * 1.1} viewBox="-12 -14 24 26">
+      <g fill="none" stroke="#52525b" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M -6 -2 L -6 8 Q -6 11 -3 11 L 3 11 Q 6 11 6 8 L 6 -2 Z" fill="#fef3c7" fillOpacity={0.4} />
+        <path d="M 6 0 Q 10 0 10 4 Q 10 8 6 8" />
+        <path d="M -6 -2 L 6 -2" />
+        <path d="M -2 -7 Q -3 -10 -1 -13" />
+        <path d="M 2 -7 Q 3 -10 1 -13" />
+      </g>
+    </svg>
+  );
+}
+
 // SVG string builders for Canvas PNG (parallel maintenance with React components above —
 // SVG defs 同步, 改一处两处都要改). Used in renderCardToPng to drawImage.
 function buildDoodleSvgString(variant: DoodleVariant, sizePx: number): string {
   const ns = 'xmlns="http://www.w3.org/2000/svg"';
-  if (variant === "stickFigure") {
-    return `<svg ${ns} width="${sizePx}" height="${sizePx * 1.25}" viewBox="-20 -25 40 50">
+  switch (variant) {
+    case "stickFigure":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx * 1.25}" viewBox="-20 -25 40 50">
   <g fill="none" stroke="#52525b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="0" cy="-15" r="5"/>
     <circle cx="-1.8" cy="-16" r="0.6" fill="#52525b" stroke="none"/>
@@ -151,8 +217,8 @@ function buildDoodleSvgString(variant: DoodleVariant, sizePx: number): string {
     <path d="M 0 6 Q 2 12 4 18"/>
   </g>
 </svg>`;
-  } else if (variant === "animal") {
-    return `<svg ${ns} width="${sizePx}" height="${sizePx * 0.68}" viewBox="-22 -15 44 30">
+    case "animal":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx * 0.68}" viewBox="-22 -15 44 30">
   <g fill="none" stroke="#52525b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M -10 0 Q -12 -6 -7 -8 Q 0 -10 8 -8 Q 13 -6 11 0 Q 12 5 7 6 Q 0 7 -8 6 Q -12 5 -10 0 Z" fill="#fef3c7" fill-opacity="0.5"/>
     <path d="M -7 -7 L -8 -12 L -4 -9 Z" fill="#fef3c7"/>
@@ -164,9 +230,41 @@ function buildDoodleSvgString(variant: DoodleVariant, sizePx: number): string {
     <path d="M 11 0 Q 16 -3 14 -8"/>
   </g>
 </svg>`;
-  } else {
-    return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-10 -10 20 20">
+    case "heart":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-10 -10 20 20">
   <path d="M 0 6 Q -8 -2 -6 -6 Q -3 -9 0 -5 Q 3 -9 6 -6 Q 8 -2 0 6 Z" fill="#fda4af" stroke="#52525b" stroke-width="1" stroke-linejoin="round"/>
+</svg>`;
+    case "cloud":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx * 0.42}" viewBox="-25 -10 50 20">
+  <path d="M -18 4 Q -22 -3 -14 -5 Q -8 -10 0 -7 Q 8 -10 14 -5 Q 22 -3 18 4 L 14 5 L -14 5 Z" fill="white" stroke="#52525b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+    case "sun":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-15 -15 30 30">
+  <g fill="none" stroke="#52525b" stroke-width="1.6" stroke-linecap="round">
+    <circle cx="0" cy="0" r="6" fill="#fef9c3"/>
+    <path d="M 0 -10 L 0 -14"/><path d="M 7.07 -7.07 L 9.9 -9.9"/>
+    <path d="M 10 0 L 14 0"/><path d="M 7.07 7.07 L 9.9 9.9"/>
+    <path d="M 0 10 L 0 14"/><path d="M -7.07 7.07 L -9.9 9.9"/>
+    <path d="M -10 0 L -14 0"/><path d="M -7.07 -7.07 L -9.9 -9.9"/>
+  </g>
+</svg>`;
+    case "moon":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-10 -10 20 20">
+  <path d="M 4 -7 Q -8 -3 -8 4 Q -3 9 4 7 Q -2 4 -2 0 Q -2 -4 4 -7 Z" fill="#fef9c3" stroke="#52525b" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>`;
+    case "star":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-10 -10 20 20">
+  <path d="M 0 -8 L 2.4 -2.5 L 8 -2.5 L 3.5 1 L 5.5 7 L 0 3.5 L -5.5 7 L -3.5 1 L -8 -2.5 L -2.4 -2.5 Z" fill="#fef3c7" stroke="#52525b" stroke-width="1.4" stroke-linejoin="round"/>
+</svg>`;
+    case "cup":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx * 1.1}" viewBox="-12 -14 24 26">
+  <g fill="none" stroke="#52525b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M -6 -2 L -6 8 Q -6 11 -3 11 L 3 11 Q 6 11 6 8 L 6 -2 Z" fill="#fef3c7" fill-opacity="0.4"/>
+    <path d="M 6 0 Q 10 0 10 4 Q 10 8 6 8"/>
+    <path d="M -6 -2 L 6 -2"/>
+    <path d="M -2 -7 Q -3 -10 -1 -13"/>
+    <path d="M 2 -7 Q 3 -10 1 -13"/>
+  </g>
 </svg>`;
   }
 }
@@ -845,12 +943,24 @@ async function renderCardToPng(opts: {
       stickFigure: 70,
       animal: 95,
       heart: 55,
+      cloud: 100,
+      sun: 78,
+      moon: 60,
+      star: 65,
+      cup: 65,
+    };
+    const doodleHeightRatios: Record<DoodleVariant, number> = {
+      stickFigure: 1.25,
+      animal: 0.68,
+      heart: 1.0,
+      cloud: 0.42,
+      sun: 1.0,
+      moon: 1.0,
+      star: 1.0,
+      cup: 1.1,
     };
     const dSize = doodlePngSizes[doodleVariant];
-    const dHeight =
-      doodleVariant === "stickFigure" ? dSize * 1.25
-      : doodleVariant === "animal" ? dSize * 0.68
-      : dSize;
+    const dHeight = dSize * doodleHeightRatios[doodleVariant];
     const doodleSvg = buildDoodleSvgString(doodleVariant, dSize);
     const doodleBlob = new Blob([doodleSvg], { type: "image/svg+xml;charset=utf-8" });
     const doodleUrl = URL.createObjectURL(doodleBlob);
@@ -1550,6 +1660,11 @@ export default function Home() {
                   {selectedDoodle === "stickFigure" && <DoodleStickFigure size={28} />}
                   {selectedDoodle === "animal" && <DoodleAnimal size={36} />}
                   {selectedDoodle === "heart" && <DoodleHeart size={22} />}
+                  {selectedDoodle === "cloud" && <DoodleCloud size={38} />}
+                  {selectedDoodle === "sun" && <DoodleSun size={30} />}
+                  {selectedDoodle === "moon" && <DoodleMoon size={24} />}
+                  {selectedDoodle === "star" && <DoodleStar size={26} />}
+                  {selectedDoodle === "cup" && <DoodleCup size={26} />}
                 </div>
               );
             })()}
