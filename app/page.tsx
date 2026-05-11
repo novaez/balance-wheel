@@ -2371,6 +2371,16 @@ export default function Home() {
                         handleWitnessClick();
                       }
                     }}
+                    onFocus={(e) => {
+                      // iOS Safari keyboard 弹起后 layout viewport 不缩, browser
+                      // native auto-scroll input visible 不 reliable. delay 300ms
+                      // 等 keyboard 动画完, 显式 scrollIntoView 让 input 在视觉
+                      // viewport 顶部 (跟之前好状态截图 32 一致).
+                      const el = e.currentTarget;
+                      setTimeout(() => {
+                        el.scrollIntoView({ block: "start", behavior: "smooth" });
+                      }, 300);
+                    }}
                     autoFocus
                     maxLength={PRESENCE_MAX_LEN}
                     placeholder={presencePlaceholder}
