@@ -1064,6 +1064,11 @@ export default function Home() {
   } | null>(null);
   const [a11yOpen, setA11yOpen] = useState(false);
   const wheelSvgRef = useRef<SVGSVGElement | null>(null);
+  // Track presence input focus time. blur 在 focus 后 500ms 内视为 spurious
+  // (WeChat scrollIntoView 触发的 layout shift blur), 不 commit. > 500ms 视为
+  // user-initiated (Form Assistant Done bar tap), commit. 让 WeChat 不 auto-finish
+  // 同时保留 Form Done bar 的"完成"语义.
+  const presenceFocusTimeRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
 
   // Phase 2 视觉风格 A/B — local hostname override page-bg to baseline white
@@ -1457,12 +1462,13 @@ export default function Home() {
   );
 
   const handlePresenceBlur = useCallback(() => {
-    // blur 完全 no-op. user 必须 explicit click "我说完了" 或 Return key / Form
-    // Assistant Done 才 commit. 之前 witnessNow(presenceDraft) 在 draft 有内容
-    // 时 spurious blur (WeChat scrollIntoView 动画 trigger) 仍 commit 跳 witness
-    // — user 没主动 click 但 page 自动 finish, bug 根因. blur 不 commit 完全
-    // 消除 spurious blur 副作用.
-  }, []);
+    // Spurious blur guard: blur within 500ms of focus = WeChat scrollIntoView 引起
+    // layout shift, ignore. > 500ms = user 真意 dismiss keyboard (Form Done bar
+    // tap), commit with placeholder fall back if empty.
+    const elapsed = Date.now() - presenceFocusTimeRef.current;
+    if (elapsed < 500) return;
+    witnessNow(presenceDraft.trim() || presencePlaceholder);
+  }, [presenceDraft, witnessNow, presencePlaceholder]);
 
   const handleWitnessClick = useCallback(() => {
     // 主动点 = user-initiated produce; 空 draft fall back 到 placeholder 作 user voice.
@@ -2391,11 +2397,12 @@ export default function Home() {
                       }
                     }}
                     onFocus={(e) => {
+                      // Track focus time for spurious blur guard.
+                      presenceFocusTimeRef.current = Date.now();
                       // iOS Safari + WeChat WebView keyboard 弹起后 layout viewport
                       // 不缩, browser native auto-scroll 不 reliable. delay 300ms
                       // 等 keyboard 动画完, 显式 scroll input visible. 用 instant
-                      // (not smooth) 避免 WeChat smooth animation 间触发 spurious
-                      // blur 让 witness phase 自动 flip.
+                      // (not smooth) 避免 WeChat smooth animation 触发 spurious blur.
                       const el = e.currentTarget;
                       setTimeout(() => {
                         el.scrollIntoView({ block: "start", behavior: "instant" as ScrollBehavior });
