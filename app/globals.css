@@ -169,6 +169,17 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   stroke-width: 1.2;
 }
 
+/* Phase 2 — Stage 4 reflect 阶段 wheel mild rock. 强化 "颠/平" inquiry 体感,
+   wheel 微微摇 ±0.5° 暗示 still settling. subtle 不 distracting. */
+@keyframes reflect-wheel-rock {
+  0%, 100% { transform: rotate(-0.4deg); }
+  50% { transform: rotate(0.4deg); }
+}
+.reflect-wheel-rock {
+  animation: reflect-wheel-rock 4s ease-in-out infinite;
+  transform-origin: center;
+}
+
 /* shape 阶段：整轮 bob 一下让 user 看到"形状显现"。translate 沿 Y 一次，
    不重复——bob 只是认知激活的一次微停顿，不该变成持续律动。 */
 @keyframes wheel-shape-bob {

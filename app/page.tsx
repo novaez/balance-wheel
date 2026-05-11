@@ -554,7 +554,11 @@ function ScribbleHatchingFill({
     const y1 = y0 - Math.sin(strokeAngle) * half;
     const x2 = x0 + Math.cos(strokeAngle) * half;
     const y2 = y0 + Math.sin(strokeAngle) * half;
-    const sw = 1.0 + rng() * 1.6;
+    // Phase 2 craft 3 — 笔尖压感: high score = press 深 = stroke 粗.
+    // pressureScale 0.55 (低分细笔) → 1.55 (满分粗笔). 视觉: 推得越远色越浓.
+    // 用 displayScore (preview value during press), press 中 stroke 实时变粗.
+    const pressureScale = 0.55 + (displayScore / MAX_SCORE) * 1.0;
+    const sw = (1.0 + rng() * 1.6) * pressureScale;
     const lightDelta = (rng() - 0.5) * 0.24;
     const strokeColor = jitterColor(color, lightDelta);
     const op = 0.5 + rng() * 0.35;
@@ -1879,6 +1883,7 @@ export default function Home() {
                 // 动画被 press 中断 / 自然结束 class 移除时, transition 兜底
                 // 让 transform 平滑回 0, 不再 "跳一下"。
                 isEval ? "wheel-shape-bob-host" : "",
+                mode === "reflect" ? "reflect-wheel-rock" : "",
                 isEval && evalPhase === "shape" ? "wheel-shape-bob" : "",
               ]
                 .filter(Boolean)
