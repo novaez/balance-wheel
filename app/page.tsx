@@ -1654,30 +1654,76 @@ export default function Home() {
   // render block 都能 reuse. wheel center SVG x = 0; obstacle x in SVG =
   // 0 + atProgress - groundProgressAbs.
   const groundProgressAbs = isRunning ? rotation * GROUND_PER_DEG : 0;
-  // Phase 2 craft — obstacles 每次 startRide 重新随机 (跟 runId 挂钩, mulberry32
-  // deterministic given runId, 同 run 内 React render 间稳定). 3 个 obstacles
-  // 在 [200, 1200) 范围, 至少相距 250 避免视觉拥挤. type/radius/height 也微
-  // jitter 让每跑视觉不同.
-  const obstaclesData = useMemo<
-    { atProgress: number; type: "bump" | "pit"; radius: number; height: number }[]
-  >(() => {
+  // Phase 3c — terrain enrichment (design §六). 替换 Phase 2 的 bump/pit 二
+  // 元 obstacles 为 6 种 terrain element: pit (沟) / slope-up / slope-down /
+  // sand (沙地) / snow (雪地) / rock (石块, Phase 2 bump 复用) / grass (装饰).
+  // 4-6 elements per run distance 1200px, mulberry32 per runId 同 run 内稳定.
+  // 各 element 独立 height + radius + length, ground curve deviation 根据
+  // type 分发不同 shape (rock = bell up, pit = bell down, slope = half-bell,
+  // sand = ripple, snow = shallow dip, grass = visual only).
+  type TerrainElementType =
+    | "rock" // 石块 (凸起, Phase 2 bump 复用)
+    | "pit" // 沟 (下沉)
+    | "slope-up" // 上坡
+    | "slope-down" // 下坡
+    | "sand" // 沙地 (浅 ripple)
+    | "snow" // 雪地 (浅凹)
+    | "grass"; // 草丛 (装饰, 不改 ground)
+  type TerrainElement = {
+    atProgress: number;
+    type: TerrainElementType;
+    radius: number;
+    height: number;
+  };
+  const obstaclesData = useMemo<TerrainElement[]>(() => {
     const rng = mulberry32(hashSeed(runId, 0xb04d));
-    const positions: number[] = [];
+    const used: number[] = [];
+    const target = 4 + Math.floor(rng() * 3); // 4-6 elements
+    const items: TerrainElement[] = [];
     let attempts = 0;
-    while (positions.length < 3 && attempts < 50) {
-      const at = 200 + Math.floor(rng() * 1000);
-      if (positions.every((p) => Math.abs(p - at) >= 250)) {
-        positions.push(at);
-      }
+    while (items.length < target && attempts < 80) {
       attempts++;
+      const at = 200 + Math.floor(rng() * 1000);
+      if (used.some((p) => Math.abs(p - at) < 180)) continue;
+      used.push(at);
+      // type 分布: rock + pit 重一些 (Phase 2 carry), 其它 4 种均匀
+      const roll = rng();
+      let type: TerrainElementType;
+      let radius: number;
+      let height: number;
+      if (roll < 0.28) {
+        type = "rock";
+        radius = 14 + Math.floor(rng() * 6); // 14-19
+        height = 7 + Math.floor(rng() * 4); // 7-10
+      } else if (roll < 0.5) {
+        type = "pit";
+        radius = 22 + Math.floor(rng() * 10); // 22-31
+        height = 10 + Math.floor(rng() * 6); // 10-15 (沟深 30-80px 缩放)
+      } else if (roll < 0.62) {
+        type = "slope-up";
+        radius = 30 + Math.floor(rng() * 25); // 30-54 (length 60-108)
+        height = 10 + Math.floor(rng() * 6);
+      } else if (roll < 0.72) {
+        type = "slope-down";
+        radius = 30 + Math.floor(rng() * 25);
+        height = 8 + Math.floor(rng() * 4);
+      } else if (roll < 0.82) {
+        type = "sand";
+        radius = 40 + Math.floor(rng() * 35); // length 80-150
+        height = 3;
+      } else if (roll < 0.92) {
+        type = "snow";
+        radius = 50 + Math.floor(rng() * 50); // length 100-200
+        height = 5;
+      } else {
+        type = "grass";
+        radius = 25 + Math.floor(rng() * 25);
+        height = 6;
+      }
+      items.push({ atProgress: at, type, radius, height });
     }
-    positions.sort((a, b) => a - b);
-    return positions.map((at) => ({
-      atProgress: at,
-      type: rng() < 0.5 ? ("bump" as const) : ("pit" as const),
-      radius: 14 + Math.floor(rng() * 6), // 14-19
-      height: 7 + Math.floor(rng() * 4), // 7-10
-    }));
+    items.sort((a, b) => a.atProgress - b.atProgress);
+    return items;
   }, [runId]);
   const groundCurveDeviation = (x: number) => {
     let dy = 0;
@@ -1687,12 +1733,47 @@ export default function Home() {
       if (Math.abs(dx) > o.radius) continue;
       const t = dx / o.radius;
       const bell = Math.cos((t * Math.PI) / 2) ** 2;
-      dy += (o.type === "bump" ? -1 : 1) * o.height * bell;
+      switch (o.type) {
+        case "rock":
+          dy += -o.height * bell;
+          break;
+        case "pit":
+          dy += o.height * bell;
+          break;
+        case "slope-up":
+          dy += -o.height * bell * 0.7;
+          break;
+        case "slope-down":
+          dy += o.height * bell * 0.55;
+          break;
+        case "sand":
+          // 浅 ripple — small noise on top of subtle dip
+          dy += (Math.sin(dx * 0.4) * 2 + 1) * bell;
+          break;
+        case "snow":
+          dy += o.height * bell * 0.6;
+          break;
+        case "grass":
+          // 装饰 only, 不改 ground curve
+          break;
+      }
     }
     return dy;
   };
   // 2.0× 放大让 wheel 颠簸幅度比 ground 起伏更夸张 (物理上不真实但视觉更"颠").
   const obstacleBob = showGround ? groundCurveDeviation(0) * 2.0 : 0;
+
+  // Phase 3c — slope micro tilt ±2°. wheel 不变形 boundary 守 (design §六:
+  // 禁 squash/stretch/spring, 仅允许 micro tilt 反映 self 适应 environment 的
+  // micro-adjust). 用 ground curve 在 wheel 中心 ±15px 的 dy 差计算 slope
+  // angle, clamp ±2°. 非 running 阶段不应用 (reflect/presence/done 0 tilt).
+  const slopeTilt = (() => {
+    if (!isRunning) return 0;
+    const dy1 = groundCurveDeviation(-15);
+    const dy2 = groundCurveDeviation(15);
+    const slopeDeg = Math.atan2(dy2 - dy1, 30) * (180 / Math.PI);
+    return Math.max(-2, Math.min(2, slopeDeg));
+  })();
 
   // Phase 1.5l — pulse 取消 (liushu 拍). visual disturbance 完全靠 ground line
   // 起伏 (Phase 1.5k A 路面颠簸) 表达 "路途平坦还是颠簸". sector 不再闪烁.
@@ -2037,6 +2118,9 @@ export default function Home() {
               </g>
 
               <g transform={`translate(0 ${(bob + obstacleBob).toFixed(3)})`}>
+                {/* Phase 3c — slope micro tilt 包在 rotate 外 (rotate 是 wheel
+                    自身角度, tilt 是车身相对 ground 的姿态, 两者独立). */}
+                <g transform={`rotate(${slopeTilt.toFixed(3)})`}>
                 <g transform={`rotate(${rotation.toFixed(3)})`}>
                   {/* Phase 1.5g — 框架 vs 填色分层（奋笔疾书 hatching D'）
                       ====================================================
@@ -2197,6 +2281,7 @@ export default function Home() {
                       </g>
                     )}
                 </g>
+                </g>
               </g>
 
               {/* Press preview 数字浮现：实时显示当前预览的 score 整数。
@@ -2213,6 +2298,9 @@ export default function Home() {
               {showGround && (() => {
                 // Phase 1.5t — ground render reuse component-scope
                 // obstaclesData + groundCurveDeviation (用于 wheel obstacleBob).
+                // Phase 3c — terrain element 视觉装饰: grass / sand / snow 在
+                // ground 上面叠加 simple SVG 提示 (色块 / 点状 / 浅色), wheel
+                // 物理已经在 groundCurveDeviation 中按 type dispatch.
                 const groundCurveY = (x: number) =>
                   GROUND_Y + groundCurveDeviation(x);
                 const groundX0 = vbox.x + 4;
@@ -2225,6 +2313,77 @@ export default function Home() {
                 });
                 return (
                   <g>
+                    {/* Phase 3c — terrain visual decorations (grass/sand/snow) */}
+                    {obstaclesData.map((o, idx) => {
+                      const x = o.atProgress - groundProgressAbs;
+                      if (x < groundX0 - 50 || x > groundXEnd + 50) return null;
+                      const y = groundCurveY(x);
+                      if (o.type === "grass") {
+                        // 草丛 — 几根简笔草线
+                        return (
+                          <g key={`terrain-${idx}`}>
+                            {Array.from({ length: 5 }, (_, i) => {
+                              const gx = x + (i - 2) * 4;
+                              return (
+                                <line
+                                  key={`gr-${i}`}
+                                  x1={gx}
+                                  y1={y}
+                                  x2={gx + (i % 2 === 0 ? 1 : -1)}
+                                  y2={y - 6 - (i % 2)}
+                                  stroke="#65a30d"
+                                  strokeWidth={1.2}
+                                  strokeLinecap="round"
+                                />
+                              );
+                            })}
+                          </g>
+                        );
+                      }
+                      if (o.type === "sand") {
+                        // 沙地 — 浅黄色 patch + 点状颗粒
+                        return (
+                          <g key={`terrain-${idx}`}>
+                            <ellipse
+                              cx={x}
+                              cy={y + 1}
+                              rx={o.radius}
+                              ry={3}
+                              fill="#fde68a"
+                              opacity={0.5}
+                            />
+                            {Array.from({ length: 6 }, (_, i) => (
+                              <circle
+                                key={`sd-${i}`}
+                                cx={x + (i - 2.5) * o.radius * 0.3}
+                                cy={y + 2 + (i % 2)}
+                                r={0.8}
+                                fill="#92400e"
+                                opacity={0.6}
+                              />
+                            ))}
+                          </g>
+                        );
+                      }
+                      if (o.type === "snow") {
+                        // 雪地 — 白色浅 patch
+                        return (
+                          <g key={`terrain-${idx}`}>
+                            <ellipse
+                              cx={x}
+                              cy={y + 1}
+                              rx={o.radius}
+                              ry={4}
+                              fill="#f8fafc"
+                              stroke="#cbd5e1"
+                              strokeWidth={0.6}
+                              opacity={0.85}
+                            />
+                          </g>
+                        );
+                      }
+                      return null;
+                    })}
                     <polyline
                       points={points.join(" ")}
                       stroke="#a1a1aa"
