@@ -55,6 +55,10 @@ const PRESENCE_PLACEHOLDERS = [
   "心里有个角落空着",             // 诗意觉察
   "好像也没那么糟",               // 反向接纳
   "怎么觉得有点空",               // 真诚情绪
+  "其实我已经走了不少",           // 接纳 + 自我肯定 (积极)
+  "也挺好的，原来",               // 反向接纳 (积极)
+  "看到了，我自己",               // 觉察 + 自我肯定 (积极)
+  "这就是我，就这样",             // 平静接纳 (积极)
 ];
 const COMMITMENT_PLACEHOLDERS = [
   "今天做：先不做",                   // anti-commitment 摆烂诚实
@@ -65,6 +69,10 @@ const COMMITMENT_PLACEHOLDERS = [
   "跟自己道个歉",                     // 自我关怀
   "想在某一个领域多投入",             // 领域泛化 fuzz (NCRW: user 自己选)
   "下个月想往前挪一点",               // 模糊推进 (避开 specific score)
+  "我决定先停下来，再看看",           // 自我权威 + decisive (active voice)
+  "我想认真照顾一下自己",             // 自我权威 + 关怀
+  "今天我选择慢一点",                 // 自我权威 + ownership
+  "我要给自己一些空间",               // 自我权威 + ownership
 ];
 
 type Scores = number[]; // length 8, each 0..10 integer
@@ -1781,14 +1789,32 @@ export default function Home() {
           {isEval ? (
             <>
               <header className="mb-6">
-                {/* Phase 2 — 朋友反馈 4 行太多 (h1 / framing / details summary / hint).
-                    删 h1 "生命之轮" (wheel 上方 sticky h2 "我人生的马车" 已是 page
-                    anchor, h1 重复 brand) + 删 <details>"完整说明 / 怎么玩" 整段
-                    (wheel 视觉 + framing 自己说话, 不需要 product 解释 wheel of life).
-                    留 framing 核心 instruction (Co-Active wheel of life 经典锚点). */}
-                <p className="text-base leading-relaxed text-zinc-600">
+                {/* Phase 2 v2 — h1 + details 恢复 (liushu: details 是给不熟 wheel
+                    of life 的 user progressive disclosure 入口, 应露出但不抢眼;
+                    h1 brand "生命之轮" 也保留, page 没产品名 全是马车隐喻 不对).
+                    紧凑视觉: details summary 改 "不熟悉？看完整说明" (explicit 指
+                    给不懂的 user) + text-xs + zinc-400 muted, 比之前更克制 . */}
+                <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+                  生命之轮
+                </h1>
+                <p className="mt-3 text-base leading-relaxed text-zinc-600">
                   圆心 = 0，外缘 = 10。画出此刻你这辆人生马车的车轮。
                 </p>
+                <details className="mt-2 text-xs leading-relaxed text-zinc-400">
+                  <summary className="cursor-pointer list-none underline-offset-2 hover:text-zinc-600 hover:underline [&::-webkit-details-marker]:hidden">
+                    不熟悉？看完整说明
+                  </summary>
+                  <div className="mt-2 space-y-2 text-zinc-500">
+                    <p>
+                      生命之轮的 8 个区块代表你生命中的 8 个不同领域。请为你此时此刻这些领域的满意程度打分——圆心代表 0
+                      分，外缘代表 10 分。分数越低，外缘越靠近圆心。通过你的分数，重新画出此刻的生命之轮。
+                    </p>
+                    <p>
+                      生命之轮帮你看到不同领域目前正在如何影响你的生活。想想看：如果你人生的马车就在这一车轮上前进，你的路途会有多平坦
+                      / 颠簸？生命之轮还会提供给我们一个未来工作的方向。
+                    </p>
+                  </div>
+                </details>
               </header>
 
               {/* 操作提示 — 跟 framing 区分开（一个是"为什么"，一个是"怎么做"）。
