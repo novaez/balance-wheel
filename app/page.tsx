@@ -1499,29 +1499,10 @@ export default function Home() {
     }
   }, [commitDraft, commitmentPlaceholder]);
 
-  // Mobile 工具栏对勾 (iOS 拼音键盘 / 九宫格 — 没 Return key, 工具栏对勾是
-  // 唯一"完成"入口) 不发 keydown event, 也不一定 trigger blur (iOS 16+ 倾向
-  // dismiss keyboard 但保 textarea focus). 监听 visualViewport resize 检测
-  // keyboard dismiss 作为 commit trigger fallback. desktop 无虚拟键盘 / 无
-  // visualViewport, listener no-op (vv 不存在时直接 return).
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (mode !== "presence" || presencePhase !== "input") return;
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const KEYBOARD_THRESHOLD = 100;
-    let keyboardWasOpen = vv.height < window.innerHeight - KEYBOARD_THRESHOLD;
-    const handleResize = () => {
-      const isOpen = vv.height < window.innerHeight - KEYBOARD_THRESHOLD;
-      if (keyboardWasOpen && !isOpen) {
-        // Keyboard 刚 dismiss (工具栏对勾 / tap outside) → user-initiated commit
-        witnessNow(presenceDraft.trim() || presencePlaceholder);
-      }
-      keyboardWasOpen = isOpen;
-    };
-    vv.addEventListener("resize", handleResize);
-    return () => vv.removeEventListener("resize", handleResize);
-  }, [mode, presencePhase, presenceDraft, witnessNow, presencePlaceholder]);
+  // visualViewport listener 撤了 — WeChat 上 scrollIntoView 触发 keyboard
+  // resize event, listener fires witnessNow auto-finish. commit 严格走 explicit
+  // button click "我说完了" + Return key 两 paths. blur 不 commit (handlePresenceBlur
+  // no-op), scroll 不 commit, focus 不 commit.
 
   // Phase 2 — placeholder re-pick on entering presence flow. SPA 内 mode 从
   // 别处变 "presence" (e.g., reflect → presence 自然推进, 或 done 阶段 user
