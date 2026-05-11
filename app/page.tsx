@@ -1805,7 +1805,7 @@ export default function Home() {
           className={[
             "flex w-full flex-col items-center",
             "md:w-1/2 md:sticky md:top-10",
-            isEval ? "sticky top-0 z-10 bg-zinc-50/95 pt-4 pb-1 backdrop-blur" : "",
+            isEval ? "sticky top-0 z-10 bg-zinc-50/50 pt-4 pb-1 backdrop-blur" : "",
             "md:bg-transparent md:pt-0 md:pb-0 md:backdrop-blur-none",
           ]
             .filter(Boolean)
