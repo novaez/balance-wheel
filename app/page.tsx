@@ -1166,8 +1166,15 @@ export default function Home() {
   // Drive a single 5-second ride; rAF self-stops at progress=1 so the wheel
   // rests at its final pose, then auto-advances to the reflect stage so the
   // disturbance / question can land without an interrupting button click.
+  //
+  // Phase 3 — 仅 car metaphor 走这条主 rAF (它驱动 wheel rotation + ground
+  // scroll + terrain bob). 4 新 metaphor (cookie/pizza/pot-plants/campfires)
+  // 不依赖 progress state, 由各自 adapter 内部 setTimeout(onFinish, DURATION)
+  // 触发 transition 到 reflect (见 MetaphorRenderer onFinish prop). 不 gate
+  // 会 double-trigger: 主 rAF 5s 设 reflect + adapter onFinish 也设 reflect.
   useEffect(() => {
     if (mode !== "running") return;
+    if (pick && pick.metaphor !== "car") return;
     const startedAt = performance.now();
     const tick = (now: number) => {
       const t = Math.min(now - startedAt, RUN_DURATION_MS) / RUN_DURATION_MS;
@@ -1182,7 +1189,7 @@ export default function Home() {
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-  }, [mode, runId]);
+  }, [mode, runId, pick]);
 
   // Phase 1.5 — 8 个维度全都 touched 时，自动从 input 推进到 connect → shape → ready。
   // 不依赖按钮，因为最后一次 release 本身就是过渡 affordance。
@@ -2056,6 +2063,7 @@ export default function Home() {
                 scores={scores}
                 metaphor={pick.metaphor}
                 visitSeed={pick.visitSeed}
+                onFinish={() => setMode("reflect")}
               />
             ) : (
             <svg
@@ -2611,7 +2619,7 @@ export default function Home() {
                         窄 viewport 把 "——" 单独 wrap 到下一行 (em dash 是
                         line-breakable 字符, 默认 wrap 行为视觉断裂). 整 unit
                         nowrap, 空间不够时整 unit 换下一行 (dash 跟字一起). */}
-                    看着这辆马车，我此刻<span className="whitespace-nowrap">感觉到——</span>
+                    我此刻<span className="whitespace-nowrap">感觉到——</span>
                   </p>
                   <input
                     type="text"

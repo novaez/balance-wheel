@@ -31,6 +31,7 @@ export function PotPlantsAdapter({
   scores,
   visitSeed,
   craft,
+  onFinish,
 }: Extract<AdapterProps, { metaphor: "pot-plants" }>) {
   const [elapsedMs, setElapsedMs] = useState(0);
   useEffect(() => {
@@ -43,6 +44,14 @@ export function PotPlantsAdapter({
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  // Phase 3 — animation 跑完后通知 page.tsx 转到 reflect.
+  // 主 rAF 在 page.tsx 已 gate 给 car only, 这里 setTimeout 不会 double-trigger.
+  useEffect(() => {
+    if (!onFinish) return;
+    const t = window.setTimeout(onFinish, POT_PLANTS_DURATION_MS);
+    return () => window.clearTimeout(t);
+  }, [onFinish]);
 
   const t = elapsedMs / 1000;
   const trayFade = Math.min(1, t / 0.5);

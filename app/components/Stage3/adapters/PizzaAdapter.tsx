@@ -54,6 +54,7 @@ export function PizzaAdapter({
   scores,
   visitSeed,
   craft,
+  onFinish,
 }: Extract<AdapterProps, { metaphor: "pizza" }>) {
   const [elapsedMs, setElapsedMs] = useState(0);
   useEffect(() => {
@@ -66,6 +67,14 @@ export function PizzaAdapter({
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  // Phase 3 — animation 跑完后通知 page.tsx 转到 reflect.
+  // 主 rAF 在 page.tsx 已 gate 给 car only, 这里 setTimeout 不会 double-trigger.
+  useEffect(() => {
+    if (!onFinish) return;
+    const t = window.setTimeout(onFinish, PIZZA_DURATION_MS);
+    return () => window.clearTimeout(t);
+  }, [onFinish]);
 
   const t = elapsedMs / 1000;
   const pizzaFade = Math.min(1, t / 0.5);
