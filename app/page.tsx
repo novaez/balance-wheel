@@ -1457,14 +1457,12 @@ export default function Home() {
   );
 
   const handlePresenceBlur = useCallback(() => {
-    // 上面对勾 (Safari Form Assistant Bar Done) 触发 input blur (Done 内部
-    // call activeElement.blur()), 期待 commit (跟主动 click "我说完了" /
-    // 下面 Return key 对称). 空 draft fall back 到 placeholder 跟其它路径
-    // 一致 (placeholder = default value 转向, sequence 守则 reframe).
-    // side effect: tap outside input 也 commit, 但 presence input phase
-    // 失焦 = user 意图 done, 接受 implicit commit.
-    witnessNow(presenceDraft.trim() || presencePlaceholder);
-  }, [presenceDraft, witnessNow, presencePlaceholder]);
+    // blur 不 fall back placeholder, 只 user explicit click "我说完了" / Return
+    // key / Form Assistant Done bar 才 commit. 之前 blur fall back 让 WeChat
+    // scrollIntoView 触发的 spurious blur 也 commit 跳 witness, bug. user 想
+    // commit 永远 explicit click button 或 Return key, 不靠 blur auto-commit.
+    witnessNow(presenceDraft);
+  }, [presenceDraft, witnessNow]);
 
   const handleWitnessClick = useCallback(() => {
     // 主动点 = user-initiated produce; 空 draft fall back 到 placeholder 作 user voice.
@@ -1545,11 +1543,20 @@ export default function Home() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (presencePhase !== "witnessed") return;
-    requestAnimationFrame(() => {
+    const scrollAll = () => {
       window.scrollTo(0, 0);
       document.documentElement.scrollTop = 0;
       document.body.scrollTop = 0;
-    });
+    };
+    requestAnimationFrame(scrollAll);
+    // setTimeouts ok here because witnessed phase 无 autoFocus, 不冲突
+    // keyboard auto-scroll. multi-pass cover Safari iOS scroll quirks.
+    const t1 = setTimeout(scrollAll, 100);
+    const t2 = setTimeout(scrollAll, 350);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [presencePhase]);
 
   useEffect(() => {
@@ -2386,20 +2393,11 @@ export default function Home() {
                       }
                     }}
                     onFocus={(e) => {
-                      // iOS Safari keyboard 弹起后 layout viewport 不缩, browser
-                      // native auto-scroll input visible 不 reliable. delay 300ms
+                      // iOS Safari + WeChat WebView keyboard 弹起后 layout viewport
+                      // 不缩, browser native auto-scroll 不 reliable. delay 300ms
                       // 等 keyboard 动画完, 显式 scrollIntoView 让 input 在视觉
-                      // viewport 顶部 (跟之前好状态截图 32 一致).
-                      // WeChat WebView 跳过 — WeChat 自己 keyboard scroll work
-                      // 正常, 且 scrollIntoView 在 WeChat 会 trigger spurious blur
-                      // 让 handlePresenceBlur fall back to placeholder 直接 witness
-                      // flip user 无机会输入.
-                      if (
-                        typeof window !== "undefined" &&
-                        /MicroMessenger/i.test(window.navigator.userAgent)
-                      ) {
-                        return;
-                      }
+                      // viewport 顶部. handlePresenceBlur 不 fall back, 即使
+                      // scrollIntoView 触发 spurious blur 也 safe (不 commit).
                       const el = e.currentTarget;
                       setTimeout(() => {
                         el.scrollIntoView({ block: "start", behavior: "smooth" });
