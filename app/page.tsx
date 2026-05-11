@@ -1628,7 +1628,7 @@ export default function Home() {
   if (isDone && presence) {
     return (
       <div className="min-h-screen w-full bg-zinc-50 text-zinc-900 font-sans">
-        <main className="mx-auto flex max-w-md flex-col items-center gap-6 px-6 pt-8 pb-32 md:pt-12 md:pb-12 md:min-h-screen md:justify-center">
+        <main className="mx-auto flex max-w-md flex-col items-center gap-3 px-6 pt-2 pb-24 md:gap-6 md:pt-12 md:pb-12 md:min-h-screen md:justify-center">
           {/* Souvenir card — the only emotional outlet of the UI (圆桌 #1 #7).
               Phase 1.6 reframe v4 (N4 sign-off 派, 经 N7 真机反馈后回退): 没顶部
               header, 日期作整张卡 sign-off (commitment / presence 之后右对齐
@@ -1636,7 +1636,7 @@ export default function Home() {
               life"。视觉气场: 用户的话占主导, 日期 sign-off 是 ta 的署名,
               watermark 是产品 ID。 */}
           <article
-            className="fade-rise relative w-full overflow-hidden rounded-md bg-white px-7 py-9 shadow-md"
+            className="fade-rise relative w-full overflow-hidden rounded-md bg-white px-7 py-5 shadow-md md:py-9"
             style={{ animationDelay: "0.1s" }}
             aria-label="留印卡片"
           >
@@ -1676,7 +1676,7 @@ export default function Home() {
                 viewBox={`${-MAX_RADIUS - VBOX_PAD} ${-MAX_RADIUS - VBOX_PAD} ${
                   (MAX_RADIUS + VBOX_PAD) * 2
                 } ${(MAX_RADIUS + VBOX_PAD) * 2}`}
-                className="h-auto w-full max-w-[200px] mb-4"
+                className="h-auto w-full max-w-[160px] mb-2 md:max-w-[200px] md:mb-4"
                 role="img"
                 aria-label="生命之轮快照"
               >
