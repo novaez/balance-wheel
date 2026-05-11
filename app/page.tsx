@@ -2376,6 +2376,16 @@ export default function Home() {
                       // native auto-scroll input visible 不 reliable. delay 300ms
                       // 等 keyboard 动画完, 显式 scrollIntoView 让 input 在视觉
                       // viewport 顶部 (跟之前好状态截图 32 一致).
+                      // WeChat WebView 跳过 — WeChat 自己 keyboard scroll work
+                      // 正常, 且 scrollIntoView 在 WeChat 会 trigger spurious blur
+                      // 让 handlePresenceBlur fall back to placeholder 直接 witness
+                      // flip user 无机会输入.
+                      if (
+                        typeof window !== "undefined" &&
+                        /MicroMessenger/i.test(window.navigator.userAgent)
+                      ) {
+                        return;
+                      }
                       const el = e.currentTarget;
                       setTimeout(() => {
                         el.scrollIntoView({ block: "start", behavior: "smooth" });
