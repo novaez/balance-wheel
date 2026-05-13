@@ -74,14 +74,17 @@ export const ANIMALS_BY_DIM: AnimalChar[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 // AnimalImage — PNG <image> render, fallback placeholder 占位.
 // ─────────────────────────────────────────────────────────────────────────────
-// 显示尺寸 = animal.size × BASE × scoreFactor × perspectiveScale:
-//   - animal.size: character identity 3.25x ratio (大象 3.25 / 小鸟 1.0)
-//   - scoreFactor: 0.5 (score 0) → 1.2 (score 10) — 反思 hook "大象本大但
-//     分数低就变小, 视觉反差读 '健康分低'". 双维度 score → animal size
-//     mapping 增强 reflective tension.
-//   - perspectiveScale: 后排 0.85x foreshortening (远小近大透视)
-//   - BASE 40 (从 30) — 整体动物 1.33x larger, lineup 视觉 punch 起来
-const BASE_SIZE_PX = 40;
+// 显示尺寸 = BASE × scoreFactor × perspectiveScale:
+//   - scoreFactor: 0.5 (score 0) → 1.2 (score 10) — animal size 完全 score-
+//     driven, 不跟 character identity size 走 (liushu 拍板 2026-05-13:
+//     "小猫 10 分, 大象 10 分 应该一样大"). 反思 hook 直观: 同 score → 同 size,
+//     评分 = 我给这个 dim 分的 pizza 大小.
+//   - perspectiveScale: 后排 0.85x foreshortening (远小近大透视, 微差不破坏
+//     score → size mapping).
+//   - BASE 90 — score 10 animal ~108 px clear visible.
+//   - 删除 animal.size character identity size — character 通过 PNG visual +
+//     color 区分, 不通过 size 区分.
+const BASE_SIZE_PX = 90;
 
 function AnimalImage({
   animal,
@@ -99,7 +102,9 @@ function AnimalImage({
   perspectiveScale?: number;
 }) {
   const scoreFactor = 0.5 + (score / 10) * 0.7; // 0.5 - 1.2
-  const displaySize = animal.size * BASE_SIZE_PX * scoreFactor * perspectiveScale;
+  // animal size = score-driven only (不跟 character.size 走). liushu 拍板:
+  // 同 score → 同 size, 反思 hook 直接对应 pizza 分得多少.
+  const displaySize = BASE_SIZE_PX * scoreFactor * perspectiveScale;
   const half = displaySize / 2;
 
   if (animal.hasPng) {
@@ -328,15 +333,16 @@ export function PizzaAdapter(
   //   Paint order (z 后到前): pizza stage → top → middle → bottom
   return (
     <g className="pizza-adapter" data-pose={pose}>
-      {/* Anticipate phase: single closed pizza box w/ "PIZZA" label.
-          (liushu confirmed "挺好" 不动 visual) */}
+      {/* Anticipate phase: single square pizza box w/ "PIZZA" label.
+          Scale equal x/y (放弃 v2 §二 透视压扁) 让 box visual 正方形 (square
+          pizza = square box, liushu intuition). */}
       <g
         className="closed-box"
         style={{
           opacity: pose === "anticipate" ? 1 : 0,
           transition: "opacity 0.6s ease-out",
         }}
-        transform="translate(0 -60) scale(0.7 0.55)"
+        transform="translate(0 -50) scale(0.65 0.65)"
       >
         <rect
           x={-200}
@@ -376,91 +382,58 @@ export function PizzaAdapter(
         </text>
       </g>
 
-      {/* Catch + React phase: split view — 2 squares side-by-side. Left = lid
-          (PIZZA label), Right = open box w/ pizza wheel (catch only, react
-          hides wheel). 整体缩小 fit 2 squares horizontally. */}
+      {/* Catch + React phase: 2 squares 连一起 with 中间收窄 hinge ("opened
+          pizza box" 视觉). 1 path 描述 combined outline: 左 square 160×180 +
+          中间 hinge 40×120 (高度 收窄 60 单位) + 右 square 160×180. */}
       <g
         className="split-view"
         style={{
           opacity: pose !== "anticipate" ? 1 : 0,
           transition: "opacity 0.6s ease-out",
         }}
+        transform="translate(0 -50)"
       >
-        {/* Left square: lid representation w/ PIZZA label */}
-        <g transform="translate(-115 -60) scale(0.5 0.55)">
-          <rect
-            x={-200}
-            y={-200}
-            width={400}
-            height={400}
-            rx={28}
-            ry={28}
-            fill="#c89968"
-            stroke="#7a5a30"
-            strokeWidth={2.5}
-          />
-          <rect
-            x={-188}
-            y={-188}
-            width={376}
-            height={376}
-            rx={20}
-            ry={20}
-            fill="none"
-            stroke="#9a6f3e"
-            strokeWidth={1.5}
-            opacity={0.6}
-          />
-          <text
-            x={0}
-            y={28}
-            textAnchor="middle"
-            fontSize={130}
-            fontWeight={900}
-            fill="#7a5a30"
-            opacity={0.7}
-            fontFamily="ui-serif, Georgia, serif"
-            letterSpacing={6}
-          >
-            PIZZA
-          </text>
-        </g>
+        {/* Combined outline path: 2 squares + 中间 hinge (clockwise from top-left) */}
+        <path
+          d="M-180,-72 a18,18 0 0 1 18,-18 H-20 V-60 H20 V-90 H162 a18,18 0 0 1 18,18 V72 a18,18 0 0 1 -18,18 H20 V60 H-20 V90 H-162 a18,18 0 0 1 -18,-18 Z"
+          fill="#c89968"
+          stroke="#7a5a30"
+          strokeWidth={2.5}
+          strokeLinejoin="round"
+        />
+        {/* Inner outline 壁厚 (跟 outer 同 shape, inset 10) */}
+        <path
+          d="M-170,-72 a8,8 0 0 1 8,-8 H-20 V-50 H20 V-80 H162 a8,8 0 0 1 8,8 V72 a8,8 0 0 1 -8,8 H20 V50 H-20 V80 H-162 a8,8 0 0 1 -8,-8 Z"
+          fill="none"
+          stroke="#9a6f3e"
+          strokeWidth={1.5}
+          opacity={0.5}
+        />
 
-        {/* Right square: open box w/ pizza wheel (catch shows wheel, react
-            hides wheel for "pizza eaten" effect) */}
-        <g transform="translate(115 -60) scale(0.5 0.55)">
-          <rect
-            x={-200}
-            y={-200}
-            width={400}
-            height={400}
-            rx={28}
-            ry={28}
-            fill="#c89968"
-            stroke="#7a5a30"
-            strokeWidth={2.5}
-          />
-          <rect
-            x={-188}
-            y={-188}
-            width={376}
-            height={376}
-            rx={20}
-            ry={20}
-            fill="none"
-            stroke="#9a6f3e"
-            strokeWidth={1.5}
-            opacity={0.6}
-          />
-          {/* Wheel pizza body inside right box — catch visible, react fade out */}
-          <g
-            style={{
-              opacity: pose === "catch" ? 1 : 0,
-              transition: "opacity 0.6s ease-out",
-            }}
-          >
-            <WheelPizzaBody scores={scores} />
-          </g>
+        {/* Left square interior: "PIZZA" label centered at x=-100 */}
+        <text
+          x={-100}
+          y={15}
+          textAnchor="middle"
+          fontSize={48}
+          fontWeight={900}
+          fill="#7a5a30"
+          opacity={0.7}
+          fontFamily="ui-serif, Georgia, serif"
+          letterSpacing={3}
+        >
+          PIZZA
+        </text>
+
+        {/* Right square interior: wheel pizza body centered at x=100 */}
+        <g
+          transform="translate(100 0) scale(0.42 0.42)"
+          style={{
+            opacity: pose === "catch" ? 1 : 0,
+            transition: "opacity 0.6s ease-out",
+          }}
+        >
+          <WheelPizzaBody scores={scores} />
         </g>
       </g>
 
