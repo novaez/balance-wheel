@@ -150,7 +150,60 @@ function darken(hex: string, factor: number): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PizzaAdapter — main entry. 8 animal lineup + pose timeline.
+// WheelPizzaBody — v2 §五 wheel persistent. 8 sector 几何 + 颜色 persist
+// (跟 page.tsx Stage 1-2 主 wheel 一致 dim color), 透视压扁 + 上移作"pizza
+// 桌上"远景. 后续 polish 加 pepperoni / cheese 黄边 topping overlay.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MAX_RADIUS = 160; // 跟 page.tsx 主 wheel 同 max radius
+
+function WheelPizzaBody({ scores }: { scores: number[] }) {
+  return (
+    <g
+      className="wheel-pizza-body"
+      // v2 §二 transition 透视 hint: 横向 70% 缩 (留 lineup 空间), 纵向 55%
+      // 压扁 (透视感 wheel "远处地面 pizza"). 上移 -60 让 lineup 下方有空间.
+      transform="translate(0 -60) scale(0.7 0.55)"
+    >
+      {ANIMALS_BY_DIM.map((animal, dimIdx) => {
+        const startAngle = (dimIdx / 8) * 2 * Math.PI - Math.PI / 2;
+        const endAngle = ((dimIdx + 1) / 8) * 2 * Math.PI - Math.PI / 2;
+        const score = Math.max(0, Math.min(10, scores[dimIdx] ?? 0));
+        const radius = (score / 10) * MAX_RADIUS;
+        if (radius <= 0) return null;
+        const x0 = Math.cos(startAngle) * radius;
+        const y0 = Math.sin(startAngle) * radius;
+        const x1 = Math.cos(endAngle) * radius;
+        const y1 = Math.sin(endAngle) * radius;
+        const d = `M0,0 L${x0.toFixed(2)},${y0.toFixed(2)} A${radius},${radius} 0 0,1 ${x1.toFixed(2)},${y1.toFixed(2)} Z`;
+        return (
+          <path
+            key={animal.id}
+            d={d}
+            fill={animal.color}
+            stroke={darken(animal.color, 0.55)}
+            strokeWidth={1.2}
+            strokeLinejoin="round"
+            opacity={0.92}
+          />
+        );
+      })}
+      {/* outline ring (full circle, score-independent — 标识 "pizza 边缘") */}
+      <circle
+        cx={0}
+        cy={0}
+        r={MAX_RADIUS}
+        fill="none"
+        stroke="#3a2c20"
+        strokeWidth={1.5}
+        opacity={0.35}
+      />
+    </g>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PizzaAdapter — main entry. wheel pizza body + 8 animal lineup + pose timeline.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function PizzaAdapter(
@@ -179,6 +232,10 @@ export function PizzaAdapter(
   //   animal lineup baseline y ≈ 200 (wheel 下方), 8 等距 x [-180, 180]
   return (
     <g className="pizza-adapter" data-pose={pose}>
+      {/* v2 §五 wheel pizza body persistent — 8 sector 几何 + 颜色 (跟 Stage 1-2
+          主 wheel 同 dim color) + 透视压扁上移. score → sector radius mapping. */}
+      <WheelPizzaBody scores={scores} />
+
       {/* Phase 3b 后续: 8 slice 副本 overlay (起始 sector position → bezier arc
           飞到对应 animal 手中). 当前 framework verify 阶段不实施. */}
       <g className="pizza-slice-copies" />
