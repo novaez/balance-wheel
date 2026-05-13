@@ -701,8 +701,8 @@ function computeBob(rotation: number, scores: Scores): number {
       if (sectorMaxY > maxY) maxY = sectorMaxY;
     }
   }
-  // Phase 3 polish — bob amplitude × 2.0 (liushu "起起伏伏").
-  return (MAX_RADIUS - maxY) * 2.0;
+  // Phase 3 polish — bob amplitude × 1.5 (从 2.0, liushu "颠簸过大"调回).
+  return (MAX_RADIUS - maxY) * 1.5;
 }
 
 // One trip: 2 full turns over 5s, ease-in-out so the ride starts gently,
@@ -732,15 +732,15 @@ const VBOX_EVAL = {
   w: (MAX_RADIUS + VBOX_LABEL_PAD) * 2,
   h: (MAX_RADIUS + VBOX_PAD) * 2,
 };
-// Phase 3 polish — 车 metaphor 镜头再退 (liushu +3 步):
-//   width: 600 → 900 (+50%, wheel 占 horizontal 35% vs original 74%)
-//   height: 560 → 720 (+29%, terrain vertical 更广)
-// Mobile container 340 wide → 272 px tall. "远处奔跑" 体感强.
+// Phase 3 polish — 车 metaphor 镜头再退 1 步:
+//   width: 900 → 1050 (+17%, wheel 占 horizontal 30%)
+//   height: 720 → 820 (+14%)
+// Mobile container 340 wide → 265 px tall. 极限退后 (wheel < 30% mobile 看不清).
 const VBOX_RUN = {
-  x: -450,
-  y: -200,
-  w: 900,
-  h: 720,
+  x: -525,
+  y: -220,
+  w: 1050,
+  h: 820,
 };
 
 type Mode = "eval" | "running" | "reflect" | "presence" | "done";
@@ -1893,9 +1893,9 @@ export default function Home() {
     }
     return dy;
   };
-  // Phase 3 polish — obstacleBob × 4.5 (从 3.0, liushu "起起伏伏").
-  // 物理上不真实但视觉 wheel 越障 dramatic 跨大 viewBox.
-  const obstacleBob = showGround ? groundCurveDeviation(0) * 4.5 : 0;
+  // Phase 3 polish — obstacleBob × 2.5 (从 4.5, liushu "颠簸过大"调回).
+  // 越障仍 visible 但不再 dramatic 过头.
+  const obstacleBob = showGround ? groundCurveDeviation(0) * 2.5 : 0;
 
   // Phase 3c — slope micro tilt ±2°. wheel 不变形 boundary 守 (design §六:
   // 禁 squash/stretch/spring, 仅允许 micro tilt 反映 self 适应 environment 的
@@ -2465,20 +2465,20 @@ export default function Home() {
                       if (x < groundX0 - 50 || x > groundXEnd + 50) return null;
                       const y = groundCurveY(x);
                       if (o.type === "grass") {
-                        // 草丛 — 几根简笔草线 (拉大 chrome dinosaur vibe)
+                        // 草丛 — 拉大 (liushu 再大很多)
                         return (
                           <g key={`terrain-${idx}`}>
-                            {Array.from({ length: 7 }, (_, i) => {
-                              const gx = x + (i - 3) * 6;
+                            {Array.from({ length: 8 }, (_, i) => {
+                              const gx = x + (i - 3.5) * 9;
                               return (
                                 <line
                                   key={`gr-${i}`}
                                   x1={gx}
                                   y1={y}
-                                  x2={gx + (i % 2 === 0 ? 2 : -2)}
-                                  y2={y - 12 - (i % 3)}
+                                  x2={gx + (i % 2 === 0 ? 3 : -3)}
+                                  y2={y - 20 - (i % 3) * 2}
                                   stroke="#65a30d"
-                                  strokeWidth={2}
+                                  strokeWidth={2.8}
                                   strokeLinecap="round"
                                 />
                               );
@@ -2566,15 +2566,15 @@ export default function Home() {
                         );
                       }
                       if (o.type === "flower") {
-                        // 小花 — 2-3 朵 (花瓣 r=3.5 + 中心 r=2 + stem). 拉大 ~2x
+                        // 小花 — 2 朵 (花瓣 r=6 + 中心 r=3.5 + stem). 拉大很多 (liushu)
                         const flowerCount = 2 + (idx % 2);
                         const palette = ["#ec4899", "#f59e0b", "#a855f7", "#ef4444"];
                         const seedHue = (idx * 37) % palette.length;
                         return (
                           <g key={`terrain-${idx}`}>
                             {Array.from({ length: flowerCount }, (_, i) => {
-                              const fx = x + (i - (flowerCount - 1) / 2) * 20;
-                              const fy = y - 9;
+                              const fx = x + (i - (flowerCount - 1) / 2) * 32;
+                              const fy = y - 16;
                               const petalColor = palette[(seedHue + i) % palette.length];
                               return (
                                 <g key={`fl-${i}`}>
@@ -2583,38 +2583,40 @@ export default function Home() {
                                     x1={fx}
                                     y1={y}
                                     x2={fx}
-                                    y2={fy + 2}
+                                    y2={fy + 4}
                                     stroke="#65a30d"
-                                    strokeWidth={1.8}
+                                    strokeWidth={2.5}
                                     strokeLinecap="round"
                                   />
                                   {/* leaf on stem */}
                                   <ellipse
-                                    cx={fx + (i % 2 === 0 ? 2.8 : -2.8)}
-                                    cy={fy + 5}
-                                    rx={3}
-                                    ry={1.5}
+                                    cx={fx + (i % 2 === 0 ? 5 : -5)}
+                                    cy={fy + 9}
+                                    rx={5}
+                                    ry={2.5}
                                     fill="#65a30d"
-                                    transform={`rotate(${i % 2 === 0 ? 30 : -30} ${fx + (i % 2 === 0 ? 2.8 : -2.8)} ${fy + 5})`}
+                                    transform={`rotate(${i % 2 === 0 ? 30 : -30} ${fx + (i % 2 === 0 ? 5 : -5)} ${fy + 9})`}
                                   />
-                                  {/* 5 petals around center */}
-                                  {[0, 1, 2, 3, 4].map((p) => {
-                                    const a = (p * 2 * Math.PI) / 5 - Math.PI / 2;
+                                  {/* 7 petals around center (full sunflower) */}
+                                  {[0, 1, 2, 3, 4, 5, 6].map((p) => {
+                                    const a = (p * 2 * Math.PI) / 7 - Math.PI / 2;
                                     return (
-                                      <circle
+                                      <ellipse
                                         key={p}
-                                        cx={fx + Math.cos(a) * 3.8}
-                                        cy={fy + Math.sin(a) * 3.8}
-                                        r={3.5}
+                                        cx={fx + Math.cos(a) * 6.5}
+                                        cy={fy + Math.sin(a) * 6.5}
+                                        rx={6}
+                                        ry={4}
                                         fill={petalColor}
                                         stroke="#7f1d4a"
-                                        strokeWidth={0.3}
+                                        strokeWidth={0.5}
                                         opacity={0.95}
+                                        transform={`rotate(${(a * 180) / Math.PI + 90} ${fx + Math.cos(a) * 6.5} ${fy + Math.sin(a) * 6.5})`}
                                       />
                                     );
                                   })}
                                   {/* center */}
-                                  <circle cx={fx} cy={fy} r={2.2} fill="#fbbf24" stroke="#a16207" strokeWidth={0.4} />
+                                  <circle cx={fx} cy={fy} r={3.5} fill="#fbbf24" stroke="#a16207" strokeWidth={0.7} />
                                 </g>
                               );
                             })}
