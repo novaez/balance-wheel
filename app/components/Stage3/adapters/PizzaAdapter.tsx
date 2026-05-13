@@ -382,11 +382,10 @@ export function PizzaAdapter(
         </text>
       </g>
 
-      {/* Catch + React phase: 2 squares 连一起 with 中间收窄 hinge ("opened
-          pizza box" 视觉). 1 path 描述 combined outline: 左 square 160×180 +
-          中间 hinge 30×120 (高度收窄 60 单位 + 宽度更窄 30, "thin hinge crease"
-          like real pizza box). 左 square = lid inner (翻 90° back, viewer 看
-          到的是 lid 内侧空 cardboard, 不是 outer PIZZA 标签). */}
+      {/* Catch + React phase: 2 squares 连一起 with 中间窄 hinge ("opened
+          pizza box" 视觉). 左 square 160×200 + 中间 hinge 20×160 (缺口 20 单位
+          上下, 高度更窄 thin crease) + 右 square 160×200. 左 square = lid inner
+          (翻 90° back, viewer 看到的是 lid 内侧空 cardboard). */}
       <g
         className="split-view"
         style={{
@@ -395,30 +394,47 @@ export function PizzaAdapter(
         }}
         transform="translate(0 -50)"
       >
-        {/* Combined outline path: 2 squares + 中间 hinge (30 wide).
-            clockwise from top-left, x range -180~180, y range -90~90 */}
+        {/* Combined outline path: 2 squares (200 tall) + 中间 hinge (20 wide,
+            缺口 20 单位 上下). clockwise from top-left. x [-180,180] y [-100,100] */}
         <path
-          d="M-180,-72 a18,18 0 0 1 18,-18 H-15 V-60 H15 V-90 H162 a18,18 0 0 1 18,18 V72 a18,18 0 0 1 -18,18 H15 V60 H-15 V90 H-162 a18,18 0 0 1 -18,-18 Z"
+          d="M-180,-82 a18,18 0 0 1 18,-18 H-10 V-80 H10 V-100 H162 a18,18 0 0 1 18,18 V82 a18,18 0 0 1 -18,18 H10 V80 H-10 V100 H-162 a18,18 0 0 1 -18,-18 Z"
           fill="#c89968"
           stroke="#7a5a30"
           strokeWidth={2.5}
           strokeLinejoin="round"
         />
-        {/* Inner outline 壁厚 (inset 10, hinge inner narrower too) */}
-        <path
-          d="M-170,-72 a8,8 0 0 1 8,-8 H-15 V-50 H15 V-80 H162 a8,8 0 0 1 8,8 V72 a8,8 0 0 1 -8,8 H15 V50 H-15 V80 H-162 a8,8 0 0 1 -8,-8 Z"
+        {/* Inner outline 壁厚 — 2 separate rounded rects (skip hinge inner) */}
+        <rect
+          x={-170}
+          y={-90}
+          width={140}
+          height={180}
+          rx={10}
+          ry={10}
+          fill="none"
+          stroke="#9a6f3e"
+          strokeWidth={1.5}
+          opacity={0.5}
+        />
+        <rect
+          x={30}
+          y={-90}
+          width={140}
+          height={180}
+          rx={10}
+          ry={10}
           fill="none"
           stroke="#9a6f3e"
           strokeWidth={1.5}
           opacity={0.5}
         />
 
-        {/* Left square interior: 空 cardboard (lid inner side after 90° flip).
-            "PIZZA" label 删除 — lid outer 朝后 user 看不到. */}
+        {/* Left square interior: 空 cardboard (lid inner side). PIZZA label 删除. */}
 
-        {/* Right square interior: wheel pizza body centered at x=100 */}
+        {/* Right square interior: wheel pizza body centered at x=100, scale 0.5
+            (fill right square width). */}
         <g
-          transform="translate(100 0) scale(0.42 0.42)"
+          transform="translate(100 0) scale(0.5 0.5)"
           style={{
             opacity: pose === "catch" ? 1 : 0,
             transition: "opacity 0.6s ease-out",
