@@ -234,39 +234,6 @@ function WheelPizzaBody({ scores }: { scores: number[] }) {
         </g>
       ))}
 
-      {/* Pepperoni 圆点 topping — pizza identity anchor. 数量 score-driven
-          (高 score → 多 pepperoni, 自然 "丰盛 dim 派 pepperoni 满"). */}
-      {sectors.map((s) => {
-        const score = Math.max(0, Math.min(10, scores[s.dimIdx] ?? 0));
-        const count = Math.round((score / 10) * 3); // 0-3 per sector
-        if (count === 0) return null;
-        const rng = mulberry32(s.dimIdx * 31 + 17);
-        const toRad = (d: number) => (d * Math.PI) / 180;
-        const dots: React.ReactElement[] = [];
-        for (let i = 0; i < count; i++) {
-          // 极坐标 sample (sqrt 均匀分布), 排除最外缘和最中心避免压沿
-          const tR = 0.35 + Math.sqrt(rng()) * 0.55; // 0.35-0.9 of radius
-          const r = tR * s.radius;
-          const theta = toRad(s.startDeg + (0.15 + rng() * 0.7) * (s.endDeg - s.startDeg));
-          const x = Math.cos(theta) * r;
-          const y = Math.sin(theta) * r;
-          const dotRadius = 5 + rng() * 3.5; // 5-8.5
-          dots.push(
-            <circle
-              key={`pep-${s.dimIdx}-${i}`}
-              cx={x.toFixed(2)}
-              cy={y.toFixed(2)}
-              r={dotRadius.toFixed(1)}
-              fill="#b91c1c"
-              stroke="#7a1010"
-              strokeWidth={0.6}
-              opacity={0.95}
-            />
-          );
-        }
-        return <g key={`pep-group-${s.dimIdx}`}>{dots}</g>;
-      })}
-
       {/* Crust 黄边 outer ring (darker golden brown for clear contrast against
           cardboard background, pizza 边缘 identity 清晰 visible). */}
       <circle
@@ -321,38 +288,49 @@ export function PizzaAdapter(
   const { scores, onFinish } = props;
   const tl = useAnimation();
   const [pose, setPose] = useState<Pose>("anticipate");
+  const [wheelOut, setWheelOut] = useState(false);
   const sliceRefs = useRef<(SVGGElement | null)[]>([]);
 
   useEffect(() => {
     // Pose timeline cascade (anticipate → catch → react → onFinish).
+    // Wheel fade out at catch+1.5s (slice 撕飞 完成后, wheel 立刻消失).
     const t1 = window.setTimeout(() => setPose("catch"), POSE_TIMELINE.catchAt);
     const t2 = window.setTimeout(() => setPose("react"), POSE_TIMELINE.reactAt);
     const t3 = window.setTimeout(() => onFinish?.(), PIZZA_DURATION_MS);
+    const t4 = window.setTimeout(
+      () => setWheelOut(true),
+      POSE_TIMELINE.catchAt + 1500,
+    );
 
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
       window.clearTimeout(t3);
+      window.clearTimeout(t4);
       tl.kill();
     };
   }, [tl, onFinish]);
 
   // Slice 撕飞 animation: catch phase 起始时, 8 slice 副本 from wheel center
-  // fly to 8 animal positions, staggered start.
+  // (真起点 via gsap.set, 不依赖 attribute transform) fly to animal positions.
   useEffect(() => {
     if (pose !== "catch") return;
     const timelines: gsap.core.Timeline[] = [];
     sliceRefs.current.forEach((elem, dimIdx) => {
       if (!elem) return;
       const target = SLICE_TARGETS_LOCAL[dimIdx];
-      const dx = target.x - SLICE_START_LOCAL.x;
-      const dy = target.y - SLICE_START_LOCAL.y;
-      gsap.set(elem, { x: 0, y: 0, opacity: 0 });
+      // 用 gsap.set 控制初始位置 (确保 wheel center 起点 cross-browser 一致,
+      // 不依赖 attribute transform + CSS transform 复合)
+      gsap.set(elem, {
+        x: SLICE_START_LOCAL.x,
+        y: SLICE_START_LOCAL.y,
+        opacity: 0,
+      });
       const stl = gsap.timeline({ delay: dimIdx * 0.08 });
       stl.to(elem, { opacity: 1, duration: 0.1 });
       stl.to(elem, {
-        x: dx,
-        y: dy,
+        x: target.x,
+        y: target.y,
         duration: 0.65,
         ease: "power2.in",
       }, 0);
@@ -475,20 +453,21 @@ export function PizzaAdapter(
         {/* Left square interior: 空 cardboard (lid inner side). PIZZA label 删除. */}
 
         {/* Right square interior: wheel pizza body centered at x=110 (right
-            square center), scale 0.5 uniform (no deformation, 正上方视角). */}
+            square center), scale 0.5 uniform (no deformation, 正上方视角).
+            Visible 在 catch phase 至 wheel-out trigger (slice 撕飞 完成后). */}
         <g
           transform="translate(110 0) scale(0.5 0.5)"
           style={{
-            opacity: pose === "catch" ? 1 : 0,
-            transition: "opacity 0.6s ease-out",
+            opacity: pose === "catch" && !wheelOut ? 1 : 0,
+            transition: "opacity 0.4s ease-out",
           }}
         >
           <WheelPizzaBody scores={scores} />
         </g>
 
         {/* Slice 副本 撕飞 — catch phase 时 8 slices fly from wheel center to
-            animal positions (staggered start). 起初 opacity 0 invisible, GSAP
-            animation fade in + translate + fade out on arrival. */}
+            animal positions (staggered start). 位置 via gsap.set (not attribute
+            transform), 确保起点真在 wheel center. */}
         <g className="slice-pieces">
           {ANIMALS_BY_DIM.map((animal, dimIdx) => (
             <g
@@ -496,7 +475,6 @@ export function PizzaAdapter(
               ref={(el) => {
                 sliceRefs.current[dimIdx] = el;
               }}
-              transform={`translate(${SLICE_START_LOCAL.x} ${SLICE_START_LOCAL.y})`}
               style={{ opacity: 0 }}
             >
               {/* Triangular pizza slice — apex up, base wide (像 pizza wedge) */}
@@ -507,14 +485,12 @@ export function PizzaAdapter(
                 strokeWidth={1.4}
                 strokeLinejoin="round"
               />
-              {/* Cheese yellow inner tint (small triangle) */}
+              {/* Cheese yellow inner tint (small triangle for slice identity) */}
               <path
                 d="M0,-9 L-7,6 L7,6 Z"
                 fill="#f5d061"
                 opacity={0.6}
               />
-              {/* Pepperoni dot */}
-              <circle cx={0} cy={1} r={2} fill="#b91c1c" />
             </g>
           ))}
         </g>
