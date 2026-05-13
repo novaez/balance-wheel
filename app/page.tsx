@@ -701,7 +701,8 @@ function computeBob(rotation: number, scores: Scores): number {
       if (sectorMaxY > maxY) maxY = sectorMaxY;
     }
   }
-  return MAX_RADIUS - maxY;
+  // Phase 3 polish — bob amplitude × 1.5 ("起伏明显" liushu request).
+  return (MAX_RADIUS - maxY) * 1.5;
 }
 
 // One trip: 2 full turns over 5s, ease-in-out so the ride starts gently,
@@ -731,11 +732,15 @@ const VBOX_EVAL = {
   w: (MAX_RADIUS + VBOX_LABEL_PAD) * 2,
   h: (MAX_RADIUS + VBOX_PAD) * 2,
 };
+// Phase 3 polish — 车 metaphor "镜头退后 + 空间变大":
+//   width: 432 → 600 (+39%, wheel 视觉相对小 30%)
+//   height: 420 → 560 (+33%, ground scroll 区域 + terrain vertical 更宽)
+// 仅 car metaphor running 用 (non-car metaphor via MetaphorRenderer 独立 viewBox).
 const VBOX_RUN = {
-  x: -MAX_RADIUS - VBOX_LABEL_PAD,
-  y: -MAX_RADIUS - VBOX_PAD,
-  w: (MAX_RADIUS + VBOX_LABEL_PAD) * 2,
-  h: VBOX_EVAL.h + VBOX_RUN_EXTRA,
+  x: -300,
+  y: -180,
+  w: 600,
+  h: 560,
 };
 
 type Mode = "eval" | "running" | "reflect" | "presence" | "done";
@@ -1771,6 +1776,7 @@ export default function Home() {
   // 各 element 独立 height + radius + length, ground curve deviation 根据
   // type 分发不同 shape (rock = bell up, pit = bell down, slope = half-bell,
   // sand = ripple, snow = shallow dip, grass = visual only).
+  // Phase 3 polish — 加 "flower" 装饰 type (跟 grass 同, 不改 ground curve).
   type TerrainElementType =
     | "rock" // 石块 (凸起, Phase 2 bump 复用)
     | "pit" // 沟 (下沉)
@@ -1778,7 +1784,8 @@ export default function Home() {
     | "slope-down" // 下坡
     | "sand" // 沙地 (浅 ripple)
     | "snow" // 雪地 (浅凹)
-    | "grass"; // 草丛 (装饰, 不改 ground)
+    | "grass" // 草丛 (装饰, 不改 ground)
+    | "flower"; // 小花 (装饰, 不改 ground)
   type TerrainElement = {
     atProgress: number;
     type: TerrainElementType;
@@ -1788,47 +1795,52 @@ export default function Home() {
   const obstaclesData = useMemo<TerrainElement[]>(() => {
     const rng = mulberry32(hashSeed(runId, 0xb04d));
     const used: number[] = [];
-    const target = 4 + Math.floor(rng() * 3); // 4-6 elements
+    // Phase 3 polish — 增 target 4-6 → 6-9 (terrain 元素更多, 花花草草更密).
+    const target = 6 + Math.floor(rng() * 4); // 6-9 elements
     const items: TerrainElement[] = [];
     let attempts = 0;
     while (items.length < target && attempts < 80) {
       attempts++;
       const at = 200 + Math.floor(rng() * 1000);
-      if (used.some((p) => Math.abs(p - at) < 180)) continue;
+      if (used.some((p) => Math.abs(p - at) < 130)) continue;
       used.push(at);
-      // type 分布: rock + pit 重一些 (Phase 2 carry), 其它 4 种均匀
+      // Phase 3 polish — 装饰 (grass + flower) 比例从 8% 提到 25%, 花花草草更多.
       const roll = rng();
       let type: TerrainElementType;
       let radius: number;
       let height: number;
-      if (roll < 0.28) {
+      if (roll < 0.22) {
         type = "rock";
         radius = 14 + Math.floor(rng() * 6); // 14-19
         height = 7 + Math.floor(rng() * 4); // 7-10
-      } else if (roll < 0.5) {
+      } else if (roll < 0.40) {
         type = "pit";
         radius = 22 + Math.floor(rng() * 10); // 22-31
-        height = 10 + Math.floor(rng() * 6); // 10-15 (沟深 30-80px 缩放)
-      } else if (roll < 0.62) {
+        height = 10 + Math.floor(rng() * 6); // 10-15
+      } else if (roll < 0.50) {
         type = "slope-up";
-        radius = 30 + Math.floor(rng() * 25); // 30-54 (length 60-108)
+        radius = 30 + Math.floor(rng() * 25);
         height = 10 + Math.floor(rng() * 6);
-      } else if (roll < 0.72) {
+      } else if (roll < 0.58) {
         type = "slope-down";
         radius = 30 + Math.floor(rng() * 25);
         height = 8 + Math.floor(rng() * 4);
-      } else if (roll < 0.82) {
+      } else if (roll < 0.66) {
         type = "sand";
-        radius = 40 + Math.floor(rng() * 35); // length 80-150
+        radius = 40 + Math.floor(rng() * 35);
         height = 3;
-      } else if (roll < 0.92) {
+      } else if (roll < 0.74) {
         type = "snow";
-        radius = 50 + Math.floor(rng() * 50); // length 100-200
+        radius = 50 + Math.floor(rng() * 50);
         height = 5;
-      } else {
+      } else if (roll < 0.88) {
         type = "grass";
         radius = 25 + Math.floor(rng() * 25);
         height = 6;
+      } else {
+        type = "flower";
+        radius = 20 + Math.floor(rng() * 15); // 20-34
+        height = 8;
       }
       items.push({ atProgress: at, type, radius, height });
     }
@@ -1864,14 +1876,16 @@ export default function Home() {
           dy += o.height * bell * 0.6;
           break;
         case "grass":
+        case "flower":
           // 装饰 only, 不改 ground curve
           break;
       }
     }
     return dy;
   };
-  // 2.0× 放大让 wheel 颠簸幅度比 ground 起伏更夸张 (物理上不真实但视觉更"颠").
-  const obstacleBob = showGround ? groundCurveDeviation(0) * 2.0 : 0;
+  // Phase 3 polish — obstacleBob × 3.0 (从 2.0, "起伏明显" liushu request).
+  // 物理上不真实但视觉 wheel 越障 dramatic.
+  const obstacleBob = showGround ? groundCurveDeviation(0) * 3.0 : 0;
 
   // Phase 3c — slope micro tilt ±2°. wheel 不变形 boundary 守 (design §六:
   // 禁 squash/stretch/spring, 仅允许 micro tilt 反映 self 适应 environment 的
@@ -2501,6 +2515,59 @@ export default function Home() {
                               strokeWidth={0.6}
                               opacity={0.85}
                             />
+                          </g>
+                        );
+                      }
+                      if (o.type === "flower") {
+                        // 小花 — 2-3 朵小花 (花瓣 + 中心 + stem)
+                        const flowerCount = 2 + (idx % 2);
+                        const palette = ["#ec4899", "#f59e0b", "#a855f7", "#ef4444"];
+                        const seedHue = (idx * 37) % palette.length;
+                        return (
+                          <g key={`terrain-${idx}`}>
+                            {Array.from({ length: flowerCount }, (_, i) => {
+                              const fx = x + (i - (flowerCount - 1) / 2) * 12;
+                              const fy = y - 4;
+                              const petalColor = palette[(seedHue + i) % palette.length];
+                              return (
+                                <g key={`fl-${i}`}>
+                                  {/* stem */}
+                                  <line
+                                    x1={fx}
+                                    y1={y}
+                                    x2={fx}
+                                    y2={fy + 1}
+                                    stroke="#65a30d"
+                                    strokeWidth={1}
+                                    strokeLinecap="round"
+                                  />
+                                  {/* small leaf on stem */}
+                                  <ellipse
+                                    cx={fx + (i % 2 === 0 ? 1.5 : -1.5)}
+                                    cy={fy + 3}
+                                    rx={1.5}
+                                    ry={0.8}
+                                    fill="#65a30d"
+                                    transform={`rotate(${i % 2 === 0 ? 30 : -30} ${fx + (i % 2 === 0 ? 1.5 : -1.5)} ${fy + 3})`}
+                                  />
+                                  {/* 4 petals around center */}
+                                  {[0, 1, 2, 3].map((p) => {
+                                    const a = (p * Math.PI) / 2;
+                                    return (
+                                      <circle
+                                        key={p}
+                                        cx={fx + Math.cos(a) * 2}
+                                        cy={fy + Math.sin(a) * 2}
+                                        r={1.8}
+                                        fill={petalColor}
+                                      />
+                                    );
+                                  })}
+                                  {/* center */}
+                                  <circle cx={fx} cy={fy} r={1.2} fill="#fbbf24" />
+                                </g>
+                              );
+                            })}
                           </g>
                         );
                       }
