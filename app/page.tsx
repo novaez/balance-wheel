@@ -2047,8 +2047,10 @@ export default function Home() {
             .filter(Boolean)
             .join(" ")}
         >
-          {/* Phase 3 文案改造 — 删除 "我人生的马车" H2 (Stage 2 wheel section
-              不需 title, wheel SVG 自显; cross-metaphor 协调 not 绑车 metaphor). */}
+          {/* Phase 3 文案改造 — 删除 "我人生的马车" H2 (cross-metaphor 协调 not
+              绑车 metaphor). 加 invisible spacer 保 H2 vertical space (~44px),
+              避免 wheel section 整体上移破坏 layout. */}
+          <div aria-hidden="true" className="mb-6 h-5" />
           {/* Wheel SVG — Phase 1.5 装上 pointer 事件做 1st person 推扇区。
               touch-action: none 阻止 mobile 默认 pull-to-refresh / page scroll
               在 wheel 区域上拦截 pointer move（关键 mobile fix）。
@@ -2491,7 +2493,7 @@ export default function Home() {
                   onClick={startRide}
                   className="fade-rise w-full rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
                 >
-                  让它跑一跑 →
+                  玩一玩 →
                 </button>
               )}
 
