@@ -29,6 +29,15 @@ export const METAPHOR_POOL: MetaphorName[] = ["car", "pizza"];
  * 不同 metaphor (5 个 pool, ~1/5 重复率, 跨 visit 体感"随机").
  */
 export function selectMetaphorForVisit(): MetaphorPick {
+  // dev-only URL flag: `?metaphor=pizza` 强制 pick (verify 不用 reload n 次).
+  // production build NODE_ENV='production' dead-code eliminated by Next.js.
+  if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {
+    const forced = new URLSearchParams(window.location.search).get("metaphor");
+    if (forced && (METAPHOR_POOL as readonly string[]).includes(forced)) {
+      return { metaphor: forced as MetaphorName, visitSeed: Date.now() };
+    }
+  }
+
   const visitSeed = Date.now();
   const rng = mulberry32(visitSeed);
   const idx = Math.floor(rng() * METAPHOR_POOL.length);
