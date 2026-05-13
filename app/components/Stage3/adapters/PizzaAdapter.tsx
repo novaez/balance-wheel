@@ -81,7 +81,18 @@ export const ANIMALS_BY_DIM: AnimalChar[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 // AnimalImage — PNG <image> render, fallback placeholder 占位.
 // ─────────────────────────────────────────────────────────────────────────────
-// 显示尺寸 = BASE × scoreFactor × perspectiveScale:
+// Per-pose size 补偿 — ChatGPT generate 3 pose PNG 时 character 在 1024×1024
+// canvas 内占比不同 (catch 紧凑 fills more, react 单手举高 vertical stretch
+// 反而 canvas 占 ratio 小). preserveAspectRatio="xMidYMid meet" 渲染会让 3
+// pose display size 不一致. 用 per-pose scale 补偿让 3 pose visual size 一致.
+// liushu observed: catch (第二) 最大, anticipate (第一) 第二大, react (第三) 最小.
+const POSE_SIZE_SCALE: Record<Pose, number> = {
+  anticipate: 1.0,
+  catch: 0.88,
+  react: 1.18,
+};
+
+// 显示尺寸 = BASE × scoreFactor × perspectiveScale × POSE_SIZE_SCALE:
 //   - scoreFactor: 0.5 (score 0) → 1.2 (score 10) — animal size 完全 score-
 //     driven, 不跟 character identity size 走 (liushu 拍板 2026-05-13).
 //     反思 hook 直观: 评分 = pizza 分得多少 = animal 显多大.
@@ -111,7 +122,10 @@ function AnimalImage({
   const scoreFactor = 0.5 + (score / 10) * 0.7; // 0.5 - 1.2
   // animal size = score-driven only (不跟 character.size 走). liushu 拍板:
   // 同 score → 同 size, 反思 hook 直接对应 pizza 分得多少.
-  const displaySize = BASE_SIZE_PX * scoreFactor * perspectiveScale;
+  // Per-pose size 补偿 — 3 pose PNG canvas 占比不同, 用 scale factor 修正.
+  const poseScale = POSE_SIZE_SCALE[pose] ?? 1.0;
+  const displaySize =
+    BASE_SIZE_PX * scoreFactor * perspectiveScale * poseScale;
   const half = displaySize / 2;
 
   if (animal.hasPng) {
@@ -297,11 +311,11 @@ const SLICE_TARGETS_LOCAL: Array<{ x: number; y: number }> = [
   { x: -170, y: 290 }, // dim 0 河马 top (PizzaAdapter y=240)
   { x: 0, y: 290 }, // dim 1 兔子
   { x: 170, y: 290 }, // dim 2 猫
-  { x: -85, y: 520 }, // dim 3 大象 middle (y=470, spacing 230)
-  { x: 85, y: 520 }, // dim 4 老鼠
-  { x: -170, y: 750 }, // dim 5 长颈鹿 bottom (y=700, spacing 230)
-  { x: 0, y: 750 }, // dim 6 小鸟
-  { x: 170, y: 750 }, // dim 7 老虎
+  { x: -85, y: 500 }, // dim 3 大象 middle (y=450, spacing 210)
+  { x: 85, y: 500 }, // dim 4 老鼠
+  { x: -170, y: 710 }, // dim 5 长颈鹿 bottom (y=660, spacing 210)
+  { x: 0, y: 710 }, // dim 6 小鸟
+  { x: 170, y: 710 }, // dim 7 老虎
 ];
 const SLICE_START_LOCAL = { x: 110, y: 0 }; // wheel center (right square center)
 
@@ -645,9 +659,9 @@ export function PizzaAdapter(
         </g>
       </g>
 
-      {/* Lineup 3-2-3 — viewBox 540×920, 行距 230 单位 (拉大 from 200), col
-          spacing ±170 (从 ±160), 上排 y=240 锁定, 下排自然下移 (mid 470, bot
-          700). animalPoses[8] per-dim — slice arrival 时该 animal 切 catch. */}
+      {/* Lineup 3-2-3 — viewBox 540×920, 行距 210 (从 230 缩, per liushu), col
+          spacing ±170, 上排 y=240 锁定, 下排自然下移 (mid 450, bot 660).
+          animalPoses[8] per-dim — slice arrival 时该 animal 切 catch. */}
       {/* 上排 3 (dim 0,1,2 = 河马/兔子/猫): 后方, perspective 0.85x */}
       <g className="animal-lineup-top">
         {[0, 1, 2].map((dimIdx, colIdx) => (
@@ -670,7 +684,7 @@ export function PizzaAdapter(
             animal={ANIMALS_BY_DIM[dimIdx]}
             pose={animalPoses[dimIdx]}
             x={idx === 0 ? -85 : 85}
-            y={470}
+            y={450}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={0.95}
           />
@@ -684,7 +698,7 @@ export function PizzaAdapter(
             animal={ANIMALS_BY_DIM[dimIdx]}
             pose={animalPoses[dimIdx]}
             x={-170 + colIdx * 170}
-            y={700}
+            y={660}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={1.0}
           />
