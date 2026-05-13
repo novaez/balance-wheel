@@ -85,15 +85,23 @@ export const ANIMALS_BY_DIM: AnimalChar[] = [
 //   catch (双手抱 chest 紧凑) ~76% canvas fill,
 //   anticipate (双手前伸) ~68%,
 //   react (单手举高 vertical stretch) ~60%.
-// preserveAspectRatio="meet" 让 image fit display box, character 显示 size =
-// displaySize × canvas_fill_ratio. 3 pose 视觉一致 needs:
-//   scale × canvas_ratio = constant (target = react baseline 0.708).
-// 算: anticipate × 0.68 = react × 1.18 × 0.60 → anticipate × ≈1.05
-//     catch × 0.76 = react × 0.708 → catch × ≈0.93
+// 同 SVG display box 内, character pixel size = displaySize × canvas_fill_ratio.
 const POSE_SIZE_SCALE: Record<Pose, number> = {
   anticipate: 1.05,
   catch: 0.93,
   react: 1.18,
+};
+
+// Per-animal per-pose override — 个别 animal × pose PNG canvas occupancy 异常
+// (character 在 canvas 内占比偏小), 需要 extra scale 补偿匹配 lineup 其它
+// animals. 不重 generate PNG, SVG side scale 修正.
+// liushu observed: 大象 react 比 河马/猫/兔子 都小 (大象 character canvas
+// 占比 inherently smaller). 加 extra scale 1.4 (覆盖 base react 1.18) → 大象
+// react display character 跟其它 animals react 一致 size.
+const ANIMAL_POSE_OVERRIDE: Partial<
+  Record<string, Partial<Record<Pose, number>>>
+> = {
+  elephant: { react: 1.4 },
 };
 
 // 显示尺寸 = BASE × scoreFactor × perspectiveScale × POSE_SIZE_SCALE:
@@ -127,7 +135,10 @@ function AnimalImage({
   // animal size = score-driven only (不跟 character.size 走). liushu 拍板:
   // 同 score → 同 size, 反思 hook 直接对应 pizza 分得多少.
   // Per-pose size 补偿 — 3 pose PNG canvas 占比不同, 用 scale factor 修正.
-  const poseScale = POSE_SIZE_SCALE[pose] ?? 1.0;
+  // ANIMAL_POSE_OVERRIDE 优先 — 个别 animal × pose canvas 异常 (如 大象
+  // react) 加 extra scale 让 lineup 视觉一致.
+  const poseScale =
+    ANIMAL_POSE_OVERRIDE[animal.id]?.[pose] ?? POSE_SIZE_SCALE[pose] ?? 1.0;
   const displaySize =
     BASE_SIZE_PX * scoreFactor * perspectiveScale * poseScale;
   const half = displaySize / 2;
