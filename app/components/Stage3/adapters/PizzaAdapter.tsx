@@ -21,6 +21,8 @@
 import { useEffect, useState } from "react";
 import type { AdapterProps } from "../types";
 import { useAnimation } from "../useAnimation";
+import { HatchFill } from "../primitives/HatchFill";
+import { mulberry32 } from "../random";
 
 export const PIZZA_DURATION_MS = 5500;
 
@@ -71,8 +73,12 @@ export const ANIMALS_BY_DIM: AnimalChar[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 // AnimalImage — PNG <image> render, fallback placeholder 占位.
 // ─────────────────────────────────────────────────────────────────────────────
-// 显示尺寸 = animal.size * BASE_PX (px in viewBox unit). 大象 3.25 * 30 ≈ 98px,
-// 小鸟 1.0 * 30 = 30px, 跨 lineup 3.25x size ratio 自然.
+// 显示尺寸 = animal.size × BASE × scoreFactor × perspectiveScale:
+//   - animal.size: character identity 3.25x ratio (大象 3.25 / 小鸟 1.0)
+//   - scoreFactor: 0.5 (score 0) → 1.2 (score 10) — 反思 hook "大象本大但
+//     分数低就变小, 视觉反差读 '健康分低'". 双维度 score → animal size
+//     mapping 增强 reflective tension.
+//   - perspectiveScale: 后排 0.85x foreshortening (远小近大透视)
 const BASE_SIZE_PX = 30;
 
 function AnimalImage({
@@ -80,13 +86,18 @@ function AnimalImage({
   pose,
   x,
   y,
+  score,
+  perspectiveScale = 1.0,
 }: {
   animal: AnimalChar;
   pose: Pose;
   x: number;
   y: number;
+  score: number;
+  perspectiveScale?: number;
 }) {
-  const displaySize = animal.size * BASE_SIZE_PX;
+  const scoreFactor = 0.5 + (score / 10) * 0.7; // 0.5 - 1.2
+  const displaySize = animal.size * BASE_SIZE_PX * scoreFactor * perspectiveScale;
   const half = displaySize / 2;
 
   if (animal.hasPng) {
@@ -158,6 +169,27 @@ function darken(hex: string, factor: number): string {
 const MAX_RADIUS = 160; // 跟 page.tsx 主 wheel 同 max radius
 
 function WheelPizzaBody({ scores }: { scores: number[] }) {
+  // 每 sector 算 path + clip — 跟 page.tsx Stage 1-2 主 wheel 同算法
+  // (ScribbleHatchingFill 蜡笔 multiply hatching + outline). 视觉 register
+  // 跟 Stage 2 wheel 连续, "this is the wheel I just painted".
+  const sectors = ANIMALS_BY_DIM.map((animal, dimIdx) => {
+    const startDeg = (dimIdx / 8) * 360 - 90;
+    const endDeg = ((dimIdx + 1) / 8) * 360 - 90;
+    const score = Math.max(0, Math.min(10, scores[dimIdx] ?? 0));
+    const radius = (score / 10) * MAX_RADIUS;
+    if (radius <= 0) return null;
+    const startAngle = (startDeg * Math.PI) / 180;
+    const endAngle = (endDeg * Math.PI) / 180;
+    const x0 = Math.cos(startAngle) * radius;
+    const y0 = Math.sin(startAngle) * radius;
+    const x1 = Math.cos(endAngle) * radius;
+    const y1 = Math.sin(endAngle) * radius;
+    const d = `M0,0 L${x0.toFixed(2)},${y0.toFixed(2)} A${radius},${radius} 0 0,1 ${x1.toFixed(2)},${y1.toFixed(2)} Z`;
+    // pressureScale: 跟 page.tsx 一致 0.55 (低分细笔) → 1.55 (满分粗笔)
+    const pressureScale = 0.55 + (score / 10) * 1.0;
+    return { animal, dimIdx, startDeg, endDeg, radius, d, pressureScale };
+  }).filter((s): s is NonNullable<typeof s> => s !== null);
+
   return (
     <g
       className="wheel-pizza-body"
@@ -165,30 +197,81 @@ function WheelPizzaBody({ scores }: { scores: number[] }) {
       // 压扁 (透视感 wheel "远处地面 pizza"). 上移 -60 让 lineup 下方有空间.
       transform="translate(0 -60) scale(0.7 0.55)"
     >
-      {ANIMALS_BY_DIM.map((animal, dimIdx) => {
-        const startAngle = (dimIdx / 8) * 2 * Math.PI - Math.PI / 2;
-        const endAngle = ((dimIdx + 1) / 8) * 2 * Math.PI - Math.PI / 2;
-        const score = Math.max(0, Math.min(10, scores[dimIdx] ?? 0));
-        const radius = (score / 10) * MAX_RADIUS;
-        if (radius <= 0) return null;
-        const x0 = Math.cos(startAngle) * radius;
-        const y0 = Math.sin(startAngle) * radius;
-        const x1 = Math.cos(endAngle) * radius;
-        const y1 = Math.sin(endAngle) * radius;
-        const d = `M0,0 L${x0.toFixed(2)},${y0.toFixed(2)} A${radius},${radius} 0 0,1 ${x1.toFixed(2)},${y1.toFixed(2)} Z`;
-        return (
+      <defs>
+        {sectors.map((s) => (
+          <clipPath key={`pizza-clip-${s.dimIdx}`} id={`pizza-clip-${s.dimIdx}`}>
+            <path d={s.d} />
+          </clipPath>
+        ))}
+      </defs>
+
+      {/* 蜡笔 hatching multiply + outline (跟 Stage 1-2 主 wheel 同视觉) */}
+      {sectors.map((s) => (
+        <g key={s.animal.id}>
+          <g clipPath={`url(#pizza-clip-${s.dimIdx})`}>
+            <HatchFill
+              startDeg={s.startDeg}
+              endDeg={s.endDeg}
+              radius={s.radius}
+              color={s.animal.color}
+              seed={s.dimIdx + 1}
+              pressureScale={s.pressureScale}
+            />
+          </g>
           <path
-            key={animal.id}
-            d={d}
-            fill={animal.color}
-            stroke={darken(animal.color, 0.55)}
-            strokeWidth={1.2}
+            d={s.d}
+            fill="none"
+            stroke={s.animal.color}
+            strokeWidth={1.4}
             strokeLinejoin="round"
-            opacity={0.92}
           />
-        );
+        </g>
+      ))}
+
+      {/* Pepperoni 圆点 topping — pizza identity anchor. 数量 score-driven
+          (高 score → 多 pepperoni, 自然 "丰盛 dim 派 pepperoni 满"). */}
+      {sectors.map((s) => {
+        const score = Math.max(0, Math.min(10, scores[s.dimIdx] ?? 0));
+        const count = Math.round((score / 10) * 3); // 0-3 per sector
+        if (count === 0) return null;
+        const rng = mulberry32(s.dimIdx * 31 + 17);
+        const toRad = (d: number) => (d * Math.PI) / 180;
+        const dots: React.ReactElement[] = [];
+        for (let i = 0; i < count; i++) {
+          // 极坐标 sample (sqrt 均匀分布), 排除最外缘和最中心避免压沿
+          const tR = 0.35 + Math.sqrt(rng()) * 0.55; // 0.35-0.9 of radius
+          const r = tR * s.radius;
+          const theta = toRad(s.startDeg + (0.15 + rng() * 0.7) * (s.endDeg - s.startDeg));
+          const x = Math.cos(theta) * r;
+          const y = Math.sin(theta) * r;
+          const dotRadius = 5 + rng() * 3.5; // 5-8.5
+          dots.push(
+            <circle
+              key={`pep-${s.dimIdx}-${i}`}
+              cx={x.toFixed(2)}
+              cy={y.toFixed(2)}
+              r={dotRadius.toFixed(1)}
+              fill="#b91c1c"
+              stroke="#7a1010"
+              strokeWidth={0.6}
+              opacity={0.95}
+            />
+          );
+        }
+        return <g key={`pep-group-${s.dimIdx}`}>{dots}</g>;
       })}
-      {/* outline ring (full circle, score-independent — 标识 "pizza 边缘") */}
+
+      {/* Crust 黄边 outer ring (cream/golden, pizza 边缘 identity) */}
+      <circle
+        cx={0}
+        cy={0}
+        r={MAX_RADIUS + 4}
+        fill="none"
+        stroke="#e6c376"
+        strokeWidth={5}
+        opacity={0.85}
+      />
+      {/* Inner outline (sector boundary marker, Stage 1-2 carry) */}
       <circle
         cx={0}
         cy={0}
@@ -228,50 +311,144 @@ export function PizzaAdapter(
   }, [tl, onFinish]);
 
   // Layout (viewBox VBOX_RUN ≈ x[-216,216] y[-180,240]):
-  //   wheel center (0, 0), MAX_RADIUS = 160 → wheel pizza body 区域 (后续实施)
-  //   animal lineup baseline y ≈ 200 (wheel 下方), 8 等距 x [-180, 180]
+  //   Pizza stage (box body + wheel + lid 共享 transform 透视压扁):
+  //     - Box body 一直 visible
+  //     - Pizza lid (cover top + "PIZZA" label) visible 在 anticipate phase
+  //     - Wheel pizza body (sectors+pepperoni+crust) visible 在 catch phase
+  //     - React phase wheel fade out (slice 已分给动物)
+  //   Lineup 3-2-3:
+  //     - Top (dim 0,1,2): y=85, perspective 0.8x (后方远)
+  //     - Middle (dim 3,4): y=155, x=±180 (pizza box 两侧)
+  //     - Bottom (dim 5,6,7): y=240, perspective 1.0x (前方近)
+  //   Paint order (z 后到前): pizza stage → top → middle → bottom
   return (
     <g className="pizza-adapter" data-pose={pose}>
-      {/* v2 §五 wheel pizza body persistent — 8 sector 几何 + 颜色 (跟 Stage 1-2
-          主 wheel 同 dim color) + 透视压扁上移. score → sector radius mapping. */}
-      <WheelPizzaBody scores={scores} />
+      {/* Pizza stage — box + wheel + lid 共享 perspective transform */}
+      <g
+        className="pizza-stage"
+        transform="translate(0 -60) scale(0.7 0.55)"
+      >
+        {/* Box body (一直 visible) — cardboard color, inner outline 壁厚 */}
+        <rect
+          x={-200}
+          y={-200}
+          width={400}
+          height={400}
+          rx={28}
+          ry={28}
+          fill="#c89968"
+          stroke="#7a5a30"
+          strokeWidth={2.5}
+        />
+        <rect
+          x={-188}
+          y={-188}
+          width={376}
+          height={376}
+          rx={20}
+          ry={20}
+          fill="none"
+          stroke="#9a6f3e"
+          strokeWidth={1.5}
+          opacity={0.6}
+        />
+
+        {/* Wheel pizza body — visible 只在 catch phase. fade in 当 lid 打开,
+            fade out 当 react (分完了). */}
+        <g
+          style={{
+            opacity: pose === "catch" ? 1 : 0,
+            transition: "opacity 0.6s ease-out",
+          }}
+        >
+          <WheelPizzaBody scores={scores} />
+        </g>
+
+        {/* Pizza lid — visible 只在 anticipate (盖子关). Catch 时 fade out
+            reveal pizza. */}
+        <g
+          style={{
+            opacity: pose === "anticipate" ? 1 : 0,
+            transition: "opacity 0.6s ease-out",
+          }}
+        >
+          <rect
+            x={-198}
+            y={-198}
+            width={396}
+            height={396}
+            rx={26}
+            ry={26}
+            fill="#a8804f"
+            stroke="#7a5a30"
+            strokeWidth={2}
+          />
+          <text
+            x={0}
+            y={28}
+            textAnchor="middle"
+            fontSize={110}
+            fontWeight={900}
+            fill="#7a5a30"
+            opacity={0.65}
+            fontFamily="ui-serif, Georgia, serif"
+            letterSpacing={4}
+          >
+            PIZZA
+          </text>
+        </g>
+      </g>
 
       {/* Phase 3b 后续: 8 slice 副本 overlay (起始 sector position → bezier arc
           飞到对应 animal 手中). 当前 framework verify 阶段不实施. */}
       <g className="pizza-slice-copies" />
 
-      {/* 8 animal 排排坐 (dim 顺序左到右, color rainbow 暖冷律动) */}
-      <g className="animal-lineup">
-        {ANIMALS_BY_DIM.map((animal, dimIdx) => {
-          const x = -180 + (dimIdx / 7) * 360;
-          const y = 220; // lineup 脚底锚定 y, image 向上展开
-          return (
-            <AnimalImage
-              key={animal.id}
-              animal={animal}
-              pose={pose}
-              x={x}
-              y={y}
-            />
-          );
-        })}
+      {/* Lineup 3-2-3 — paint order top → middle → bottom (背景到前景) */}
+      {/* 上排 3 (dim 0,1,2 = 河马/兔子/猫): 后方远, perspective 0.8x */}
+      <g className="animal-lineup-top">
+        {[0, 1, 2].map((dimIdx, colIdx) => (
+          <AnimalImage
+            key={ANIMALS_BY_DIM[dimIdx].id}
+            animal={ANIMALS_BY_DIM[dimIdx]}
+            pose={pose}
+            x={-130 + colIdx * 130}
+            y={85}
+            score={scores[dimIdx] ?? 0}
+            perspectiveScale={0.8}
+          />
+        ))}
+      </g>
+      {/* 中排 2 (dim 3,4 = 大象/老鼠): pizza box 两侧, perspective 0.9x */}
+      <g className="animal-lineup-middle">
+        {[3, 4].map((dimIdx, idx) => (
+          <AnimalImage
+            key={ANIMALS_BY_DIM[dimIdx].id}
+            animal={ANIMALS_BY_DIM[dimIdx]}
+            pose={pose}
+            x={idx === 0 ? -180 : 180}
+            y={155}
+            score={scores[dimIdx] ?? 0}
+            perspectiveScale={0.9}
+          />
+        ))}
+      </g>
+      {/* 下排 3 (dim 5,6,7 = 长颈鹿/小鸟/老虎): 前方近, perspective 1.0x */}
+      <g className="animal-lineup-bottom">
+        {[5, 6, 7].map((dimIdx, colIdx) => (
+          <AnimalImage
+            key={ANIMALS_BY_DIM[dimIdx].id}
+            animal={ANIMALS_BY_DIM[dimIdx]}
+            pose={pose}
+            x={-130 + colIdx * 130}
+            y={240}
+            score={scores[dimIdx] ?? 0}
+            perspectiveScale={1.0}
+          />
+        ))}
       </g>
 
       {/* Phase 3b 后续: motion line dashed trail (slice 飞 trajectory 旁) */}
       <g className="motion-lines" />
-
-      {/* DEBUG (development only): scores + pose state */}
-      {process.env.NODE_ENV === "development" && (
-        <text
-          x="0"
-          y="-160"
-          textAnchor="middle"
-          fontSize="8"
-          fill="#999"
-        >
-          pose: {pose} · scores: [{scores.join(",")}]
-        </text>
-      )}
     </g>
   );
 }
