@@ -1464,6 +1464,29 @@ export default function Home() {
   //   仅靠 canShare 会让 desktop 错走 share sheet 分支 (2026-05-10 真机 verify 暴露)
   // AbortError (用户取消 share sheet) 静默吞掉, 不当 error 处理。
   const [sharing, setSharing] = useState(false);
+  // Phase 1.6 polish — detect Web Share API availability at mount, button text
+  // 动态匹配 actual behavior: 支持 share + coarse pointer → "存到相册" /
+  // 不支持 (desktop / WeChat browser 等) → "下载图片". 避免 misleading copy.
+  const [canShareImageFile, setCanShareImageFile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const isCoarse = window.matchMedia?.("(pointer: coarse)").matches === true;
+    if (!isCoarse) return;
+    if (
+      typeof navigator !== "undefined" &&
+      typeof navigator.canShare === "function"
+    ) {
+      // Test with dummy 1-byte PNG file — canShare 仅 check 类型/能力, 不 send
+      const testFile = new File([new Uint8Array([1])], "test.png", {
+        type: "image/png",
+      });
+      try {
+        setCanShareImageFile(navigator.canShare({ files: [testFile] }));
+      } catch {
+        setCanShareImageFile(false);
+      }
+    }
+  }, []);
   const [shareError, setShareError] = useState<string | null>(null);
   const handleShare = useCallback(async () => {
     if (!presence) return;
@@ -2087,7 +2110,11 @@ export default function Home() {
               disabled={sharing}
               className="rounded-full border border-zinc-300 bg-white px-6 py-2.5 text-sm text-zinc-700 shadow-sm transition-colors hover:border-zinc-400 hover:text-zinc-900 disabled:opacity-60"
             >
-              {sharing ? "生成中…" : "存到相册"}
+              {sharing
+                ? "生成中…"
+                : canShareImageFile
+                  ? "存到相册"
+                  : "下载图片"}
             </button>
             {shareError && (
               <p
