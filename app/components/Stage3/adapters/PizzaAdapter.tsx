@@ -87,11 +87,11 @@ export const ANIMALS_BY_DIM: AnimalChar[] = [
 //     反思 hook 直观: 评分 = pizza 分得多少 = animal 显多大.
 //   - perspectiveScale: 后排 0.85x foreshortening (远小近大透视, 微差不破坏
 //     score → size mapping).
-//   - BASE 140 — score 10 animal ~168 px (bottom row), col spacing 160, slight
-//     overlap (4 px each side) at score 10. Typical scores 5-8 healthy gap.
+//   - BASE 150 — score 10 animal ~180 px (bottom row), col spacing 170,
+//     slight overlap (5 px each side) at score 10. Typical scores 5-8 healthy.
 //   - 删除 animal.size character identity size — character 通过 PNG visual +
 //     color 区分, 不通过 size 区分.
-const BASE_SIZE_PX = 140;
+const BASE_SIZE_PX = 150;
 
 function AnimalImage({
   animal,
@@ -294,14 +294,14 @@ function WheelPizzaBody({
 //     下排 y=560, x=[-140, 0, 140] (dim 5, 6, 7)
 //   Split-view local = PizzaAdapter coord - (0, -50) = animal y + 50.
 const SLICE_TARGETS_LOCAL: Array<{ x: number; y: number }> = [
-  { x: -160, y: 290 }, // dim 0 河马 top (PizzaAdapter y=240)
+  { x: -170, y: 290 }, // dim 0 河马 top (PizzaAdapter y=240)
   { x: 0, y: 290 }, // dim 1 兔子
-  { x: 160, y: 290 }, // dim 2 猫
-  { x: -80, y: 490 }, // dim 3 大象 middle (y=440)
-  { x: 80, y: 490 }, // dim 4 老鼠
-  { x: -160, y: 690 }, // dim 5 长颈鹿 bottom (y=640)
-  { x: 0, y: 690 }, // dim 6 小鸟
-  { x: 160, y: 690 }, // dim 7 老虎
+  { x: 170, y: 290 }, // dim 2 猫
+  { x: -85, y: 520 }, // dim 3 大象 middle (y=470, spacing 230)
+  { x: 85, y: 520 }, // dim 4 老鼠
+  { x: -170, y: 750 }, // dim 5 长颈鹿 bottom (y=700, spacing 230)
+  { x: 0, y: 750 }, // dim 6 小鸟
+  { x: 170, y: 750 }, // dim 7 老虎
 ];
 const SLICE_START_LOCAL = { x: 110, y: 0 }; // wheel center (right square center)
 
@@ -321,7 +321,6 @@ export function PizzaAdapter(
     () => new Array(8).fill("anticipate"),
   );
   const sliceRefs = useRef<(SVGGElement | null)[]>([]);
-  const motionLineRefs = useRef<(SVGPathElement | null)[]>([]);
 
   useEffect(() => {
     // Pose timeline cascade (anticipate → catch → react → onFinish).
@@ -398,17 +397,6 @@ export function PizzaAdapter(
       );
       stl.to(elem, { opacity: 0, duration: 0.2 });
       timelines.push(stl);
-
-      // Motion line trail (dashed bezier path along slice trajectory).
-      // Fade in catch start, fade out as slice arrives.
-      const lineElem = motionLineRefs.current[dimIdx];
-      if (lineElem) {
-        gsap.set(lineElem, { opacity: 0 });
-        const lineTl = gsap.timeline({ delay: sliceDelay });
-        lineTl.to(lineElem, { opacity: 0.45, duration: 0.15 });
-        lineTl.to(lineElem, { opacity: 0, duration: 0.35, delay: 0.4 });
-        timelines.push(lineTl);
-      }
 
       // Per-sector wheel fade out + per-animal pose 切 catch 都同步 slice
       // arrival (sliceDelay + 0.65s slice mid-flight).
@@ -629,32 +617,6 @@ export function PizzaAdapter(
           <WheelPizzaBody scores={scores} sectorOut={sectorOut} />
         </g>
 
-        {/* Motion line trail — dashed bezier path along slice trajectory.
-            Calvin & Hobbes 经典手法, fade in catch start, fade out as slice
-            arrives. Each line follows same bezier path as slice. */}
-        <g className="motion-lines">
-          {ANIMALS_BY_DIM.map((animal, dimIdx) => {
-            const target = SLICE_TARGETS_LOCAL[dimIdx];
-            const peakX = (SLICE_START_LOCAL.x + target.x) / 2;
-            const peakY = (SLICE_START_LOCAL.y + target.y) / 2 - 60;
-            return (
-              <path
-                key={`motion-${animal.id}`}
-                ref={(el) => {
-                  motionLineRefs.current[dimIdx] = el;
-                }}
-                d={`M${SLICE_START_LOCAL.x},${SLICE_START_LOCAL.y} Q${peakX},${peakY} ${target.x},${target.y}`}
-                fill="none"
-                stroke={animal.color}
-                strokeWidth={1.5}
-                strokeDasharray="5 4"
-                strokeLinecap="round"
-                style={{ opacity: 0 }}
-              />
-            );
-          })}
-        </g>
-
         {/* Slice 副本 撕飞 — catch phase 时 8 slices fly from wheel center to
             animal positions via bezier arc (staggered start). */}
         <g className="slice-pieces">
@@ -683,9 +645,9 @@ export function PizzaAdapter(
         </g>
       </g>
 
-      {/* Lineup 3-2-3 — viewBox 500×850, 行距 200 单位 (拉大 from 180), col
-          spacing ±160 (从 ±140), y 下移 (从 200/380/560 → 240/440/640).
-          animalPoses[8] per-dim — slice arrival 时该 animal 切 catch. */}
+      {/* Lineup 3-2-3 — viewBox 540×920, 行距 230 单位 (拉大 from 200), col
+          spacing ±170 (从 ±160), 上排 y=240 锁定, 下排自然下移 (mid 470, bot
+          700). animalPoses[8] per-dim — slice arrival 时该 animal 切 catch. */}
       {/* 上排 3 (dim 0,1,2 = 河马/兔子/猫): 后方, perspective 0.85x */}
       <g className="animal-lineup-top">
         {[0, 1, 2].map((dimIdx, colIdx) => (
@@ -693,22 +655,22 @@ export function PizzaAdapter(
             key={ANIMALS_BY_DIM[dimIdx].id}
             animal={ANIMALS_BY_DIM[dimIdx]}
             pose={animalPoses[dimIdx]}
-            x={-160 + colIdx * 160}
+            x={-170 + colIdx * 170}
             y={240}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={0.85}
           />
         ))}
       </g>
-      {/* 中排 2 (dim 3,4 = 大象/老鼠): in-line center, x=±80 错位 */}
+      {/* 中排 2 (dim 3,4 = 大象/老鼠): in-line center, x=±85 错位 */}
       <g className="animal-lineup-middle">
         {[3, 4].map((dimIdx, idx) => (
           <AnimalImage
             key={ANIMALS_BY_DIM[dimIdx].id}
             animal={ANIMALS_BY_DIM[dimIdx]}
             pose={animalPoses[dimIdx]}
-            x={idx === 0 ? -80 : 80}
-            y={440}
+            x={idx === 0 ? -85 : 85}
+            y={470}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={0.95}
           />
@@ -721,8 +683,8 @@ export function PizzaAdapter(
             key={ANIMALS_BY_DIM[dimIdx].id}
             animal={ANIMALS_BY_DIM[dimIdx]}
             pose={animalPoses[dimIdx]}
-            x={-160 + colIdx * 160}
-            y={640}
+            x={-170 + colIdx * 170}
+            y={700}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={1.0}
           />
