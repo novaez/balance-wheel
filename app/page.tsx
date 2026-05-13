@@ -732,13 +732,12 @@ const VBOX_EVAL = {
   w: (MAX_RADIUS + VBOX_LABEL_PAD) * 2,
   h: (MAX_RADIUS + VBOX_PAD) * 2,
 };
-// Phase 3 polish — 车 metaphor 镜头再退 1 步:
-//   width: 900 → 1050 (+17%, wheel 占 horizontal 30%)
-//   height: 720 → 820 (+14%)
-// Mobile container 340 wide → 265 px tall. 极限退后 (wheel < 30% mobile 看不清).
+// Phase 3 polish — 车 metaphor viewBox (镜头退后 + 独轮车 rider 上方空间):
+//   y top -220 → -300 (加 80 单位上方空间给 rider standing on wheel top)
+//   w/h 不变 (rider 上方 visible, wheel center still y=0).
 const VBOX_RUN = {
   x: -525,
-  y: -220,
+  y: -300,
   w: 1050,
   h: 820,
 };
@@ -2427,6 +2426,21 @@ export default function Home() {
                       </g>
                     )}
                 </g>
+                {/* 独轮车 rider — elephant standing on wheel top edge.
+                    跟 bob + slopeTilt 一起动 (在该 group 内), 不跟 wheel rotation
+                    (在 rotation group 外). Only visible 在 Stage 3 running mode
+                    (car metaphor). image y=-280 to -120 (160px height), elephant
+                    foot ~ wheel top edge y=-160. */}
+                {isRunning && (
+                  <image
+                    href="/assets/pizza/pizza-elephant-anticipate.png"
+                    x={-80}
+                    y={-280}
+                    width={160}
+                    height={160}
+                    preserveAspectRatio="xMidYMid meet"
+                  />
+                )}
                 </g>
               </g>
 
