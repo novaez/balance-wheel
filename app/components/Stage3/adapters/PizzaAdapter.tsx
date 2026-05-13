@@ -201,12 +201,11 @@ function WheelPizzaBody({ scores }: { scores: number[] }) {
   }).filter((s): s is NonNullable<typeof s> => s !== null);
 
   return (
-    <g
-      className="wheel-pizza-body"
-      // v2 §二 transition 透视 hint: 横向 70% 缩 (留 lineup 空间), 纵向 55%
-      // 压扁 (透视感 wheel "远处地面 pizza"). 上移 -60 让 lineup 下方有空间.
-      transform="translate(0 -60) scale(0.7 0.55)"
-    >
+    <g className="wheel-pizza-body">
+      {/* Background full pizza circle — cheese 黄底 (always visible, wheel 视觉
+          = consistent full circle 不论 sectors 大小). 真居中 wheel local (0,0). */}
+      <circle cx={0} cy={0} r={MAX_RADIUS} fill="#f5d061" opacity={0.9} />
+
       <defs>
         {sectors.map((s) => (
           <clipPath key={`pizza-clip-${s.dimIdx}`} id={`pizza-clip-${s.dimIdx}`}>
@@ -271,25 +270,26 @@ function WheelPizzaBody({ scores }: { scores: number[] }) {
         return <g key={`pep-group-${s.dimIdx}`}>{dots}</g>;
       })}
 
-      {/* Crust 黄边 outer ring (cream/golden, pizza 边缘 identity) */}
+      {/* Crust 黄边 outer ring (darker golden brown for clear contrast against
+          cardboard background, pizza 边缘 identity 清晰 visible). */}
       <circle
         cx={0}
         cy={0}
         r={MAX_RADIUS + 4}
         fill="none"
-        stroke="#e6c376"
-        strokeWidth={5}
-        opacity={0.85}
+        stroke="#b8843e"
+        strokeWidth={7}
+        opacity={0.9}
       />
-      {/* Inner outline (sector boundary marker, Stage 1-2 carry) */}
+      {/* Inner sector outline marker (subtle dark brown) */}
       <circle
         cx={0}
         cy={0}
         r={MAX_RADIUS}
         fill="none"
-        stroke="#3a2c20"
+        stroke="#5a3a20"
         strokeWidth={1.5}
-        opacity={0.35}
+        opacity={0.45}
       />
     </g>
   );
