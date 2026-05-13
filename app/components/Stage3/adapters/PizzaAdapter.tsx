@@ -20,10 +20,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
+import { MotionPathPlugin } from "gsap/MotionPathPlugin";
 import type { AdapterProps } from "../types";
 import { useAnimation } from "../useAnimation";
 import { HatchFill } from "../primitives/HatchFill";
 import { mulberry32 } from "../random";
+
+// Register MotionPathPlugin once (bezier arc trajectory for slice 撕飞).
+if (typeof window !== "undefined") {
+  gsap.registerPlugin(MotionPathPlugin);
+}
 
 export const PIZZA_DURATION_MS = 8000;
 
@@ -176,13 +182,22 @@ function darken(hex: string, factor: number): string {
 
 const MAX_RADIUS = 160; // 跟 page.tsx 主 wheel 同 max radius
 
-function WheelPizzaBody({ scores }: { scores: number[] }) {
+function WheelPizzaBody({
+  scores,
+  sectorOut,
+}: {
+  scores: number[];
+  sectorOut?: boolean[];
+}) {
   // 每 sector 算 path + clip — 跟 page.tsx Stage 1-2 主 wheel 同算法
   // (ScribbleHatchingFill 蜡笔 multiply hatching + outline). 视觉 register
   // 跟 Stage 2 wheel 连续, "this is the wheel I just painted".
   //
   // 无 internal transform — caller wrap 应用 transform 决定 wheel 位置/缩放.
   // (split view 时 right square wrap with own scale; anticipate 不用 wheel)
+  //
+  // sectorOut?: boolean[8] — per-sector fade out 跟 slice 撕飞 同步 (slice
+  // arrival 时 sector 同步 fade out, "撕走"视觉准确).
   const sectors = ANIMALS_BY_DIM.map((animal, dimIdx) => {
     const startDeg = (dimIdx / 8) * 360 - 90;
     const endDeg = ((dimIdx + 1) / 8) * 360 - 90;
@@ -211,9 +226,17 @@ function WheelPizzaBody({ scores }: { scores: number[] }) {
         ))}
       </defs>
 
-      {/* 蜡笔 hatching multiply + outline (跟 Stage 1-2 主 wheel 同视觉) */}
+      {/* 蜡笔 hatching multiply + outline (跟 Stage 1-2 主 wheel 同视觉).
+          Per-sector opacity 跟 sectorOut[dimIdx] 走, slice 撕飞 arrival 时
+          sector fade out ("撕走"视觉准确, sector 不再 visible 在 wheel). */}
       {sectors.map((s) => (
-        <g key={s.animal.id}>
+        <g
+          key={s.animal.id}
+          style={{
+            opacity: sectorOut?.[s.dimIdx] ? 0 : 1,
+            transition: "opacity 0.35s ease-out",
+          }}
+        >
           <g clipPath={`url(#pizza-clip-${s.dimIdx})`}>
             <HatchFill
               startDeg={s.startDeg}
@@ -289,11 +312,14 @@ export function PizzaAdapter(
   const tl = useAnimation();
   const [pose, setPose] = useState<Pose>("anticipate");
   const [wheelOut, setWheelOut] = useState(false);
+  const [sectorOut, setSectorOut] = useState<boolean[]>(
+    () => new Array(8).fill(false),
+  );
   const sliceRefs = useRef<(SVGGElement | null)[]>([]);
 
   useEffect(() => {
     // Pose timeline cascade (anticipate → catch → react → onFinish).
-    // Wheel fade out at catch+1.5s (slice 撕飞 完成后, wheel 立刻消失).
+    // Wheel crust/outline fade out at catch+1.5s (整体 fallback).
     const t1 = window.setTimeout(() => setPose("catch"), POSE_TIMELINE.catchAt);
     const t2 = window.setTimeout(() => setPose("react"), POSE_TIMELINE.reactAt);
     const t3 = window.setTimeout(() => onFinish?.(), PIZZA_DURATION_MS);
@@ -312,35 +338,72 @@ export function PizzaAdapter(
   }, [tl, onFinish]);
 
   // Slice 撕飞 animation: catch phase 起始时, 8 slice 副本 from wheel center
-  // (真起点 via gsap.set, 不依赖 attribute transform) fly to animal positions.
+  // fly bezier arc 到 animal positions. Per-sector wheel fade out 跟 slice
+  // arrival 同步 (sectorOut state).
   useEffect(() => {
     if (pose !== "catch") return;
     const timelines: gsap.core.Timeline[] = [];
+    const timers: number[] = [];
     sliceRefs.current.forEach((elem, dimIdx) => {
       if (!elem) return;
       const target = SLICE_TARGETS_LOCAL[dimIdx];
-      // 用 gsap.set 控制初始位置 (确保 wheel center 起点 cross-browser 一致,
-      // 不依赖 attribute transform + CSS transform 复合)
+      const score = Math.max(0, Math.min(10, scores[dimIdx] ?? 0));
+      // Slice size 跟 score 走: 0.4 (低分小) → 1.0 (满分大). 反思 hook:
+      // 高分 dim 飞大 slice (pizza 分得多), 低分 dim 飞小 slice (分得少).
+      const scaleFactor = 0.4 + (score / 10) * 0.6;
+      // 起点 via gsap.set (cross-browser 一致 wheel center start, 不依赖
+      // attribute transform).
       gsap.set(elem, {
         x: SLICE_START_LOCAL.x,
         y: SLICE_START_LOCAL.y,
+        scale: scaleFactor,
         opacity: 0,
       });
-      const stl = gsap.timeline({ delay: dimIdx * 0.08 });
+      // Bezier arc trajectory: 起点 wheel center → 弧顶 (mid 偏上 60 单位) →
+      // 终点 animal position. "扔" 视觉感, 跟 12 principles "arc" anchor align.
+      const peakX = (SLICE_START_LOCAL.x + target.x) / 2;
+      const peakY = (SLICE_START_LOCAL.y + target.y) / 2 - 60;
+      const sliceDelay = dimIdx * 0.08;
+      const stl = gsap.timeline({ delay: sliceDelay });
       stl.to(elem, { opacity: 1, duration: 0.1 });
-      stl.to(elem, {
-        x: target.x,
-        y: target.y,
-        duration: 0.65,
-        ease: "power2.in",
-      }, 0);
+      stl.to(
+        elem,
+        {
+          motionPath: {
+            path: [
+              { x: SLICE_START_LOCAL.x, y: SLICE_START_LOCAL.y },
+              { x: peakX, y: peakY },
+              { x: target.x, y: target.y },
+            ],
+            curviness: 1.3,
+          },
+          duration: 0.7,
+          ease: "power2.in",
+        },
+        0,
+      );
       stl.to(elem, { opacity: 0, duration: 0.2 });
       timelines.push(stl);
+
+      // Per-sector wheel fade out 跟 slice 撕飞 同步: slice arrival 时 sector
+      // 同步 fade out (sliceDelay + slice mid-flight ~0.6s).
+      const sectorOutTimer = window.setTimeout(
+        () => {
+          setSectorOut((prev) => {
+            const next = [...prev];
+            next[dimIdx] = true;
+            return next;
+          });
+        },
+        sliceDelay * 1000 + 650,
+      );
+      timers.push(sectorOutTimer);
     });
     return () => {
       timelines.forEach((t) => t.kill());
+      timers.forEach((t) => window.clearTimeout(t));
     };
-  }, [pose]);
+  }, [pose, scores]);
 
   // Layout (viewBox VBOX_RUN ≈ x[-216,216] y[-180,240]):
   //   Pizza stage (box body + wheel + lid 共享 transform 透视压扁):
@@ -454,7 +517,8 @@ export function PizzaAdapter(
 
         {/* Right square interior: wheel pizza body centered at x=110 (right
             square center), scale 0.5 uniform (no deformation, 正上方视角).
-            Visible 在 catch phase 至 wheel-out trigger (slice 撕飞 完成后). */}
+            Wheel container 整体在 catch phase visible (wheelOut fallback at
+            catch+1.5s), per-sector fade out 跟 slice 撕飞 同步 (sectorOut). */}
         <g
           transform="translate(110 0) scale(0.5 0.5)"
           style={{
@@ -462,7 +526,7 @@ export function PizzaAdapter(
             transition: "opacity 0.4s ease-out",
           }}
         >
-          <WheelPizzaBody scores={scores} />
+          <WheelPizzaBody scores={scores} sectorOut={sectorOut} />
         </g>
 
         {/* Slice 副本 撕飞 — catch phase 时 8 slices fly from wheel center to
