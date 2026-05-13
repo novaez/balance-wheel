@@ -17,6 +17,7 @@ import { useCraft } from "./useCraft";
 import { ambientBreathFrom, scoresEntropy } from "./usePhysics";
 import type { MetaphorName, Scores } from "./types";
 import { CarAdapter } from "./adapters/CarAdapter";
+import { PizzaAdapter } from "./adapters/PizzaAdapter";
 
 interface MetaphorRendererProps {
   scores: Scores;
@@ -24,6 +25,11 @@ interface MetaphorRendererProps {
   visitSeed: number;
   onFinish?: () => void;
 }
+
+// page.tsx running mode VBOX_RUN: x=-216 y=-180 w=432 h=420 (MAX_RADIUS 160
+// + VBOX_PAD 20 + VBOX_LABEL_PAD 56 + VBOX_RUN_EXTRA 60). non-car adapter 共享
+// 同 viewBox, MetaphorRenderer 包 svg wrapper, adapter 自己 render group 内容.
+const NON_CAR_VBOX = "-216 -180 432 420";
 
 export function MetaphorRenderer({
   scores,
@@ -42,6 +48,7 @@ export function MetaphorRenderer({
   switch (metaphor) {
     case "car":
       // Pass-through: main wheel SVG in page.tsx carries Phase 2 car render.
+      // MetaphorRenderer 不会真被 mount (page.tsx gate `pick.metaphor !== "car"`).
       return CarAdapter({
         metaphor: "car",
         scores,
@@ -60,14 +67,31 @@ export function MetaphorRenderer({
         visitSeed,
         onFinish,
       });
-    case "cookie":
     case "pizza":
+      // v2 Phase 3b craft 中 (大象 register baseline, 其它 7 animal placeholder).
+      // POOL enable 'pizza' 让 dev server 50% 几率 visit pick → 真机 verify register.
+      return (
+        <svg
+          viewBox={NON_CAR_VBOX}
+          className="h-auto w-full"
+          role="img"
+          aria-label="生命之轮"
+        >
+          {PizzaAdapter({
+            metaphor: "pizza",
+            scores,
+            physics: ambient,
+            craft,
+            visitSeed,
+            onFinish,
+          })}
+        </svg>
+      );
+    case "cookie":
     case "pot-plants":
     case "campfires":
-      // v2 Phase 3a: 4 个 non-car adapter 等 Phase 3b craft 时实施.
-      // selectMetaphor POOL 当前只含 'car', 这些 case 实际不会被命中 — keep for
-      // type exhaustiveness. Phase 3b 加 adapter + dispatch case + POOL 时移除
-      // 此处 fallthrough.
+      // 等 Phase 3b 各自 craft 时实施 (per v2 §四 reframe). POOL 不含这些 metaphor,
+      // 实际不会被命中. type exhaustiveness 占位.
       return null;
   }
 }

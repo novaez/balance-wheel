@@ -12,11 +12,13 @@ import type { MetaphorName, MetaphorPick } from "./types";
 //
 // 2026-05-12 v2 修订 (Phase 3a foundation): POOL 只含 'car' (Phase 2 carry).
 // 4 个 non-car adapter 在 v2 Phase 3b craft polish 阶段重做 (per v2 §D 5 metaphor
-// dynamic reframe spec) + 加入 POOL. 当前 visit 只可能选 car, 兼容 production.
+// dynamic reframe spec) + 加入 POOL.
 //
-// Phase 3b craft 实施时, 加 metaphor name 到此 POOL 即激活 visit 随机选中:
-// export const METAPHOR_POOL: MetaphorName[] = ["car", "cookie", "pizza", "pot-plants", "campfires"];
-export const METAPHOR_POOL: MetaphorName[] = ["car"];
+// 2026-05-13 Phase 3b PizzaAdapter craft 进行中:
+// POOL enable 'pizza' (50% 几率 visit pick) 让 dev server 真机 verify register.
+// craft polish 完成 + 7 animal primitives + slice animation + 接 production ready
+// 后, POOL 再加 cookie / pot-plants / campfires.
+export const METAPHOR_POOL: MetaphorName[] = ["car", "pizza"];
 
 /**
  * 给一个 visit 选一个 metaphor. 仅在 useEffect / event handler 内调用 — **不能**
