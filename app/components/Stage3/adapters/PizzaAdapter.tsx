@@ -76,15 +76,15 @@ export const ANIMALS_BY_DIM: AnimalChar[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 // 显示尺寸 = BASE × scoreFactor × perspectiveScale:
 //   - scoreFactor: 0.5 (score 0) → 1.2 (score 10) — animal size 完全 score-
-//     driven, 不跟 character identity size 走 (liushu 拍板 2026-05-13:
-//     "小猫 10 分, 大象 10 分 应该一样大"). 反思 hook 直观: 同 score → 同 size,
-//     评分 = 我给这个 dim 分的 pizza 大小.
+//     driven, 不跟 character identity size 走 (liushu 拍板 2026-05-13).
+//     反思 hook 直观: 评分 = pizza 分得多少 = animal 显多大.
 //   - perspectiveScale: 后排 0.85x foreshortening (远小近大透视, 微差不破坏
 //     score → size mapping).
-//   - BASE 90 — score 10 animal ~108 px clear visible.
+//   - BASE 110 — score 10 animal ~132 px (bottom row), 1.5x larger 让 lineup
+//     "塞满" 不显松散.
 //   - 删除 animal.size character identity size — character 通过 PNG visual +
 //     color 区分, 不通过 size 区分.
-const BASE_SIZE_PX = 90;
+const BASE_SIZE_PX = 110;
 
 function AnimalImage({
   animal,
@@ -384,7 +384,9 @@ export function PizzaAdapter(
 
       {/* Catch + React phase: 2 squares 连一起 with 中间收窄 hinge ("opened
           pizza box" 视觉). 1 path 描述 combined outline: 左 square 160×180 +
-          中间 hinge 40×120 (高度 收窄 60 单位) + 右 square 160×180. */}
+          中间 hinge 30×120 (高度收窄 60 单位 + 宽度更窄 30, "thin hinge crease"
+          like real pizza box). 左 square = lid inner (翻 90° back, viewer 看
+          到的是 lid 内侧空 cardboard, 不是 outer PIZZA 标签). */}
       <g
         className="split-view"
         style={{
@@ -393,37 +395,26 @@ export function PizzaAdapter(
         }}
         transform="translate(0 -50)"
       >
-        {/* Combined outline path: 2 squares + 中间 hinge (clockwise from top-left) */}
+        {/* Combined outline path: 2 squares + 中间 hinge (30 wide).
+            clockwise from top-left, x range -180~180, y range -90~90 */}
         <path
-          d="M-180,-72 a18,18 0 0 1 18,-18 H-20 V-60 H20 V-90 H162 a18,18 0 0 1 18,18 V72 a18,18 0 0 1 -18,18 H20 V60 H-20 V90 H-162 a18,18 0 0 1 -18,-18 Z"
+          d="M-180,-72 a18,18 0 0 1 18,-18 H-15 V-60 H15 V-90 H162 a18,18 0 0 1 18,18 V72 a18,18 0 0 1 -18,18 H15 V60 H-15 V90 H-162 a18,18 0 0 1 -18,-18 Z"
           fill="#c89968"
           stroke="#7a5a30"
           strokeWidth={2.5}
           strokeLinejoin="round"
         />
-        {/* Inner outline 壁厚 (跟 outer 同 shape, inset 10) */}
+        {/* Inner outline 壁厚 (inset 10, hinge inner narrower too) */}
         <path
-          d="M-170,-72 a8,8 0 0 1 8,-8 H-20 V-50 H20 V-80 H162 a8,8 0 0 1 8,8 V72 a8,8 0 0 1 -8,8 H20 V50 H-20 V80 H-162 a8,8 0 0 1 -8,-8 Z"
+          d="M-170,-72 a8,8 0 0 1 8,-8 H-15 V-50 H15 V-80 H162 a8,8 0 0 1 8,8 V72 a8,8 0 0 1 -8,8 H15 V50 H-15 V80 H-162 a8,8 0 0 1 -8,-8 Z"
           fill="none"
           stroke="#9a6f3e"
           strokeWidth={1.5}
           opacity={0.5}
         />
 
-        {/* Left square interior: "PIZZA" label centered at x=-100 */}
-        <text
-          x={-100}
-          y={15}
-          textAnchor="middle"
-          fontSize={48}
-          fontWeight={900}
-          fill="#7a5a30"
-          opacity={0.7}
-          fontFamily="ui-serif, Georgia, serif"
-          letterSpacing={3}
-        >
-          PIZZA
-        </text>
+        {/* Left square interior: 空 cardboard (lid inner side after 90° flip).
+            "PIZZA" label 删除 — lid outer 朝后 user 看不到. */}
 
         {/* Right square interior: wheel pizza body centered at x=100 */}
         <g
