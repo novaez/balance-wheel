@@ -701,8 +701,8 @@ function computeBob(rotation: number, scores: Scores): number {
       if (sectorMaxY > maxY) maxY = sectorMaxY;
     }
   }
-  // Phase 3 polish — bob amplitude × 1.5 ("起伏明显" liushu request).
-  return (MAX_RADIUS - maxY) * 1.5;
+  // Phase 3 polish — bob amplitude × 2.0 (liushu "起起伏伏").
+  return (MAX_RADIUS - maxY) * 2.0;
 }
 
 // One trip: 2 full turns over 5s, ease-in-out so the ride starts gently,
@@ -732,15 +732,15 @@ const VBOX_EVAL = {
   w: (MAX_RADIUS + VBOX_LABEL_PAD) * 2,
   h: (MAX_RADIUS + VBOX_PAD) * 2,
 };
-// Phase 3 polish — 车 metaphor "镜头退后 + 空间变大":
-//   width: 432 → 600 (+39%, wheel 视觉相对小 30%)
-//   height: 420 → 560 (+33%, ground scroll 区域 + terrain vertical 更宽)
-// 仅 car metaphor running 用 (non-car metaphor via MetaphorRenderer 独立 viewBox).
+// Phase 3 polish — 车 metaphor 镜头再退 (liushu +3 步):
+//   width: 600 → 900 (+50%, wheel 占 horizontal 35% vs original 74%)
+//   height: 560 → 720 (+29%, terrain vertical 更广)
+// Mobile container 340 wide → 272 px tall. "远处奔跑" 体感强.
 const VBOX_RUN = {
-  x: -300,
-  y: -180,
-  w: 600,
-  h: 560,
+  x: -450,
+  y: -200,
+  w: 900,
+  h: 720,
 };
 
 type Mode = "eval" | "running" | "reflect" | "presence" | "done";
@@ -1776,7 +1776,7 @@ export default function Home() {
   // 各 element 独立 height + radius + length, ground curve deviation 根据
   // type 分发不同 shape (rock = bell up, pit = bell down, slope = half-bell,
   // sand = ripple, snow = shallow dip, grass = visual only).
-  // Phase 3 polish — 加 "flower" 装饰 type (跟 grass 同, 不改 ground curve).
+  // Phase 3 polish — 加 "flower" + "cactus" (chrome dinosaur vibe) terrain types.
   type TerrainElementType =
     | "rock" // 石块 (凸起, Phase 2 bump 复用)
     | "pit" // 沟 (下沉)
@@ -1784,6 +1784,7 @@ export default function Home() {
     | "slope-down" // 下坡
     | "sand" // 沙地 (浅 ripple)
     | "snow" // 雪地 (浅凹)
+    | "cactus" // 仙人掌 (physics like rock 凸, visual chrome dinosaur)
     | "grass" // 草丛 (装饰, 不改 ground)
     | "flower"; // 小花 (装饰, 不改 ground)
   type TerrainElement = {
@@ -1795,51 +1796,56 @@ export default function Home() {
   const obstaclesData = useMemo<TerrainElement[]>(() => {
     const rng = mulberry32(hashSeed(runId, 0xb04d));
     const used: number[] = [];
-    // Phase 3 polish — 增 target 4-6 → 6-9 (terrain 元素更多, 花花草草更密).
-    const target = 6 + Math.floor(rng() * 4); // 6-9 elements
+    // Phase 3 polish — target 6-9 → 10-14 (liushu "装饰多一点 chrome 恐龙感").
+    const target = 10 + Math.floor(rng() * 5); // 10-14 elements
     const items: TerrainElement[] = [];
     let attempts = 0;
-    while (items.length < target && attempts < 80) {
+    while (items.length < target && attempts < 100) {
       attempts++;
-      const at = 200 + Math.floor(rng() * 1000);
-      if (used.some((p) => Math.abs(p - at) < 130)) continue;
+      const at = 200 + Math.floor(rng() * 1400);
+      // Phase 3 polish — min spacing 130 → 95 (装饰更密)
+      if (used.some((p) => Math.abs(p - at) < 95)) continue;
       used.push(at);
-      // Phase 3 polish — 装饰 (grass + flower) 比例从 8% 提到 25%, 花花草草更多.
+      // Phase 3 polish — 坡/坑/草/花/仙人掌 dimensions 拉大 + 装饰 40%.
       const roll = rng();
       let type: TerrainElementType;
       let radius: number;
       let height: number;
-      if (roll < 0.22) {
+      if (roll < 0.15) {
         type = "rock";
-        radius = 14 + Math.floor(rng() * 6); // 14-19
-        height = 7 + Math.floor(rng() * 4); // 7-10
-      } else if (roll < 0.40) {
-        type = "pit";
-        radius = 22 + Math.floor(rng() * 10); // 22-31
+        radius = 16 + Math.floor(rng() * 8); // 16-23
         height = 10 + Math.floor(rng() * 6); // 10-15
-      } else if (roll < 0.50) {
+      } else if (roll < 0.30) {
+        type = "pit";
+        radius = 35 + Math.floor(rng() * 18); // 35-52 (拉大 1.5x)
+        height = 16 + Math.floor(rng() * 8); // 16-23 (拉大)
+      } else if (roll < 0.38) {
         type = "slope-up";
-        radius = 30 + Math.floor(rng() * 25);
-        height = 10 + Math.floor(rng() * 6);
-      } else if (roll < 0.58) {
+        radius = 50 + Math.floor(rng() * 35); // 50-84 (拉大)
+        height = 16 + Math.floor(rng() * 8);
+      } else if (roll < 0.46) {
         type = "slope-down";
-        radius = 30 + Math.floor(rng() * 25);
-        height = 8 + Math.floor(rng() * 4);
-      } else if (roll < 0.66) {
+        radius = 50 + Math.floor(rng() * 35);
+        height = 13 + Math.floor(rng() * 6);
+      } else if (roll < 0.54) {
         type = "sand";
-        radius = 40 + Math.floor(rng() * 35);
+        radius = 50 + Math.floor(rng() * 40);
         height = 3;
-      } else if (roll < 0.74) {
+      } else if (roll < 0.60) {
         type = "snow";
-        radius = 50 + Math.floor(rng() * 50);
+        radius = 60 + Math.floor(rng() * 60);
         height = 5;
-      } else if (roll < 0.88) {
+      } else if (roll < 0.70) {
+        type = "cactus";
+        radius = 8 + Math.floor(rng() * 4); // 8-11 (cactus 物理 bump radius 窄)
+        height = 9 + Math.floor(rng() * 5); // 9-13
+      } else if (roll < 0.86) {
         type = "grass";
-        radius = 25 + Math.floor(rng() * 25);
+        radius = 30 + Math.floor(rng() * 25); // 30-54 (草丛拉大)
         height = 6;
       } else {
         type = "flower";
-        radius = 20 + Math.floor(rng() * 15); // 20-34
+        radius = 25 + Math.floor(rng() * 18); // 25-42 (花拉大)
         height = 8;
       }
       items.push({ atProgress: at, type, radius, height });
@@ -1875,6 +1881,10 @@ export default function Home() {
         case "snow":
           dy += o.height * bell * 0.6;
           break;
+        case "cactus":
+          // physics like rock — 越 cactus wheel 上凸 bump
+          dy += -o.height * bell;
+          break;
         case "grass":
         case "flower":
           // 装饰 only, 不改 ground curve
@@ -1883,9 +1893,9 @@ export default function Home() {
     }
     return dy;
   };
-  // Phase 3 polish — obstacleBob × 3.0 (从 2.0, "起伏明显" liushu request).
-  // 物理上不真实但视觉 wheel 越障 dramatic.
-  const obstacleBob = showGround ? groundCurveDeviation(0) * 3.0 : 0;
+  // Phase 3 polish — obstacleBob × 4.5 (从 3.0, liushu "起起伏伏").
+  // 物理上不真实但视觉 wheel 越障 dramatic 跨大 viewBox.
+  const obstacleBob = showGround ? groundCurveDeviation(0) * 4.5 : 0;
 
   // Phase 3c — slope micro tilt ±2°. wheel 不变形 boundary 守 (design §六:
   // 禁 squash/stretch/spring, 仅允许 micro tilt 反映 self 适应 environment 的
@@ -2455,24 +2465,61 @@ export default function Home() {
                       if (x < groundX0 - 50 || x > groundXEnd + 50) return null;
                       const y = groundCurveY(x);
                       if (o.type === "grass") {
-                        // 草丛 — 几根简笔草线
+                        // 草丛 — 几根简笔草线 (拉大 chrome dinosaur vibe)
                         return (
                           <g key={`terrain-${idx}`}>
-                            {Array.from({ length: 5 }, (_, i) => {
-                              const gx = x + (i - 2) * 4;
+                            {Array.from({ length: 7 }, (_, i) => {
+                              const gx = x + (i - 3) * 6;
                               return (
                                 <line
                                   key={`gr-${i}`}
                                   x1={gx}
                                   y1={y}
-                                  x2={gx + (i % 2 === 0 ? 1 : -1)}
-                                  y2={y - 6 - (i % 2)}
+                                  x2={gx + (i % 2 === 0 ? 2 : -2)}
+                                  y2={y - 12 - (i % 3)}
                                   stroke="#65a30d"
-                                  strokeWidth={1.2}
+                                  strokeWidth={2}
                                   strokeLinecap="round"
                                 />
                               );
                             })}
+                          </g>
+                        );
+                      }
+                      if (o.type === "cactus") {
+                        // 仙人掌 — chrome dinosaur 经典 silhouette: pillar + 2 arms
+                        const h = 22 + (idx % 3) * 4; // 22 / 26 / 30 height variations
+                        return (
+                          <g key={`terrain-${idx}`}>
+                            {/* main pillar */}
+                            <rect
+                              x={x - 4}
+                              y={y - h}
+                              width={8}
+                              height={h}
+                              rx={3}
+                              fill="#3f6212"
+                              stroke="#1a2e05"
+                              strokeWidth={0.8}
+                            />
+                            {/* left arm */}
+                            <path
+                              d={`M${x - 4},${y - h * 0.5} L${x - 10},${y - h * 0.5} L${x - 10},${y - h * 0.5 - 8} L${x - 6.5},${y - h * 0.5 - 8} L${x - 6.5},${y - h * 0.5 + 3} L${x - 4},${y - h * 0.5 + 3} Z`}
+                              fill="#3f6212"
+                              stroke="#1a2e05"
+                              strokeWidth={0.8}
+                            />
+                            {/* right arm */}
+                            <path
+                              d={`M${x + 4},${y - h * 0.65} L${x + 10},${y - h * 0.65} L${x + 10},${y - h * 0.65 - 7} L${x + 6.5},${y - h * 0.65 - 7} L${x + 6.5},${y - h * 0.65 + 3} L${x + 4},${y - h * 0.65 + 3} Z`}
+                              fill="#3f6212"
+                              stroke="#1a2e05"
+                              strokeWidth={0.8}
+                            />
+                            {/* small spike dots on pillar (silhouette texture) */}
+                            <line x1={x - 2} y1={y - h * 0.3} x2={x - 2} y2={y - h * 0.3 - 1.5} stroke="#1a2e05" strokeWidth={0.6} />
+                            <line x1={x + 2} y1={y - h * 0.55} x2={x + 2} y2={y - h * 0.55 - 1.5} stroke="#1a2e05" strokeWidth={0.6} />
+                            <line x1={x - 2} y1={y - h * 0.75} x2={x - 2} y2={y - h * 0.75 - 1.5} stroke="#1a2e05" strokeWidth={0.6} />
                           </g>
                         );
                       }
@@ -2519,15 +2566,15 @@ export default function Home() {
                         );
                       }
                       if (o.type === "flower") {
-                        // 小花 — 2-3 朵小花 (花瓣 + 中心 + stem)
+                        // 小花 — 2-3 朵 (花瓣 r=3.5 + 中心 r=2 + stem). 拉大 ~2x
                         const flowerCount = 2 + (idx % 2);
                         const palette = ["#ec4899", "#f59e0b", "#a855f7", "#ef4444"];
                         const seedHue = (idx * 37) % palette.length;
                         return (
                           <g key={`terrain-${idx}`}>
                             {Array.from({ length: flowerCount }, (_, i) => {
-                              const fx = x + (i - (flowerCount - 1) / 2) * 12;
-                              const fy = y - 4;
+                              const fx = x + (i - (flowerCount - 1) / 2) * 20;
+                              const fy = y - 9;
                               const petalColor = palette[(seedHue + i) % palette.length];
                               return (
                                 <g key={`fl-${i}`}>
@@ -2536,35 +2583,38 @@ export default function Home() {
                                     x1={fx}
                                     y1={y}
                                     x2={fx}
-                                    y2={fy + 1}
+                                    y2={fy + 2}
                                     stroke="#65a30d"
-                                    strokeWidth={1}
+                                    strokeWidth={1.8}
                                     strokeLinecap="round"
                                   />
-                                  {/* small leaf on stem */}
+                                  {/* leaf on stem */}
                                   <ellipse
-                                    cx={fx + (i % 2 === 0 ? 1.5 : -1.5)}
-                                    cy={fy + 3}
-                                    rx={1.5}
-                                    ry={0.8}
+                                    cx={fx + (i % 2 === 0 ? 2.8 : -2.8)}
+                                    cy={fy + 5}
+                                    rx={3}
+                                    ry={1.5}
                                     fill="#65a30d"
-                                    transform={`rotate(${i % 2 === 0 ? 30 : -30} ${fx + (i % 2 === 0 ? 1.5 : -1.5)} ${fy + 3})`}
+                                    transform={`rotate(${i % 2 === 0 ? 30 : -30} ${fx + (i % 2 === 0 ? 2.8 : -2.8)} ${fy + 5})`}
                                   />
-                                  {/* 4 petals around center */}
-                                  {[0, 1, 2, 3].map((p) => {
-                                    const a = (p * Math.PI) / 2;
+                                  {/* 5 petals around center */}
+                                  {[0, 1, 2, 3, 4].map((p) => {
+                                    const a = (p * 2 * Math.PI) / 5 - Math.PI / 2;
                                     return (
                                       <circle
                                         key={p}
-                                        cx={fx + Math.cos(a) * 2}
-                                        cy={fy + Math.sin(a) * 2}
-                                        r={1.8}
+                                        cx={fx + Math.cos(a) * 3.8}
+                                        cy={fy + Math.sin(a) * 3.8}
+                                        r={3.5}
                                         fill={petalColor}
+                                        stroke="#7f1d4a"
+                                        strokeWidth={0.3}
+                                        opacity={0.95}
                                       />
                                     );
                                   })}
                                   {/* center */}
-                                  <circle cx={fx} cy={fy} r={1.2} fill="#fbbf24" />
+                                  <circle cx={fx} cy={fy} r={2.2} fill="#fbbf24" stroke="#a16207" strokeWidth={0.4} />
                                 </g>
                               );
                             })}
