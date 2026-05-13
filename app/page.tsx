@@ -2482,7 +2482,7 @@ export default function Home() {
                     key="hint-ready"
                     className="fade-rise text-sm leading-relaxed text-zinc-500"
                   >
-                    准备好了——让它跑一程，看看路途平坦还是颠簸。
+                    准备好了——玩一玩，看看会怎样。
                   </p>
                 )}
               </div>
@@ -2602,7 +2602,7 @@ export default function Home() {
                   onClick={startRide}
                   className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
                 >
-                  再跑一次
+                  再玩一次
                 </button>
                 <button
                   type="button"
