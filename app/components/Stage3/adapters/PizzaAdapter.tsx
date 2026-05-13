@@ -323,14 +323,14 @@ function WheelPizzaBody({
 //     下排 y=560, x=[-140, 0, 140] (dim 5, 6, 7)
 //   Split-view local = PizzaAdapter coord - (0, -50) = animal y + 50.
 const SLICE_TARGETS_LOCAL: Array<{ x: number; y: number }> = [
-  { x: -170, y: 300 }, // dim 0 河马 top (PizzaAdapter y=250)
-  { x: 0, y: 300 }, // dim 1 兔子
-  { x: 170, y: 300 }, // dim 2 猫
-  { x: -85, y: 520 }, // dim 3 大象 middle (y=470, spacing 220)
-  { x: 85, y: 520 }, // dim 4 老鼠
-  { x: -170, y: 740 }, // dim 5 长颈鹿 bottom (y=690, spacing 220)
-  { x: 0, y: 740 }, // dim 6 小鸟
-  { x: 170, y: 740 }, // dim 7 老虎
+  { x: -170, y: 320 }, // dim 0 河马 top (PizzaAdapter y=270)
+  { x: 0, y: 320 }, // dim 1 兔子
+  { x: 170, y: 320 }, // dim 2 猫
+  { x: -85, y: 540 }, // dim 3 大象 middle (y=490, spacing 220)
+  { x: 85, y: 540 }, // dim 4 老鼠
+  { x: -170, y: 760 }, // dim 5 长颈鹿 bottom (y=710, spacing 220)
+  { x: 0, y: 760 }, // dim 6 小鸟
+  { x: 170, y: 760 }, // dim 7 老虎
 ];
 const SLICE_START_LOCAL = { x: 110, y: 0 }; // wheel center (right square center)
 
@@ -685,7 +685,7 @@ export function PizzaAdapter(
             animal={ANIMALS_BY_DIM[dimIdx]}
             pose={animalPoses[dimIdx]}
             x={-170 + colIdx * 170}
-            y={250}
+            y={270}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={0.85}
           />
@@ -699,7 +699,7 @@ export function PizzaAdapter(
             animal={ANIMALS_BY_DIM[dimIdx]}
             pose={animalPoses[dimIdx]}
             x={idx === 0 ? -85 : 85}
-            y={470}
+            y={490}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={0.95}
           />
@@ -713,7 +713,7 @@ export function PizzaAdapter(
             animal={ANIMALS_BY_DIM[dimIdx]}
             pose={animalPoses[dimIdx]}
             x={-170 + colIdx * 170}
-            y={690}
+            y={710}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={1.0}
           />
