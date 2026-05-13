@@ -81,14 +81,18 @@ export const ANIMALS_BY_DIM: AnimalChar[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 // AnimalImage — PNG <image> render, fallback placeholder 占位.
 // ─────────────────────────────────────────────────────────────────────────────
-// Per-pose size 补偿 — ChatGPT generate 3 pose PNG 时 character 在 1024×1024
-// canvas 内占比不同 (catch 紧凑 fills more, react 单手举高 vertical stretch
-// 反而 canvas 占 ratio 小). preserveAspectRatio="xMidYMid meet" 渲染会让 3
-// pose display size 不一致. 用 per-pose scale 补偿让 3 pose visual size 一致.
-// liushu observed: catch (第二) 最大, anticipate (第一) 第二大, react (第三) 最小.
+// Per-pose size 补偿 — ChatGPT generate 3 pose PNG canvas fill ratio inherent:
+//   catch (双手抱 chest 紧凑) ~76% canvas fill,
+//   anticipate (双手前伸) ~68%,
+//   react (单手举高 vertical stretch) ~60%.
+// preserveAspectRatio="meet" 让 image fit display box, character 显示 size =
+// displaySize × canvas_fill_ratio. 3 pose 视觉一致 needs:
+//   scale × canvas_ratio = constant (target = react baseline 0.708).
+// 算: anticipate × 0.68 = react × 1.18 × 0.60 → anticipate × ≈1.05
+//     catch × 0.76 = react × 0.708 → catch × ≈0.93
 const POSE_SIZE_SCALE: Record<Pose, number> = {
-  anticipate: 1.0,
-  catch: 0.88,
+  anticipate: 1.05,
+  catch: 0.93,
   react: 1.18,
 };
 
@@ -311,11 +315,11 @@ const SLICE_TARGETS_LOCAL: Array<{ x: number; y: number }> = [
   { x: -170, y: 290 }, // dim 0 河马 top (PizzaAdapter y=240)
   { x: 0, y: 290 }, // dim 1 兔子
   { x: 170, y: 290 }, // dim 2 猫
-  { x: -85, y: 500 }, // dim 3 大象 middle (y=450, spacing 210)
-  { x: 85, y: 500 }, // dim 4 老鼠
-  { x: -170, y: 710 }, // dim 5 长颈鹿 bottom (y=660, spacing 210)
-  { x: 0, y: 710 }, // dim 6 小鸟
-  { x: 170, y: 710 }, // dim 7 老虎
+  { x: -85, y: 510 }, // dim 3 大象 middle (y=460, spacing 220)
+  { x: 85, y: 510 }, // dim 4 老鼠
+  { x: -170, y: 730 }, // dim 5 长颈鹿 bottom (y=680, spacing 220)
+  { x: 0, y: 730 }, // dim 6 小鸟
+  { x: 170, y: 730 }, // dim 7 老虎
 ];
 const SLICE_START_LOCAL = { x: 110, y: 0 }; // wheel center (right square center)
 
@@ -684,7 +688,7 @@ export function PizzaAdapter(
             animal={ANIMALS_BY_DIM[dimIdx]}
             pose={animalPoses[dimIdx]}
             x={idx === 0 ? -85 : 85}
-            y={450}
+            y={460}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={0.95}
           />
@@ -698,7 +702,7 @@ export function PizzaAdapter(
             animal={ANIMALS_BY_DIM[dimIdx]}
             pose={animalPoses[dimIdx]}
             x={-170 + colIdx * 170}
-            y={660}
+            y={680}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={1.0}
           />
