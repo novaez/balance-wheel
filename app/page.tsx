@@ -2440,7 +2440,7 @@ export default function Home() {
                       candidate B): "8 个方向，各推到你此刻感觉到的程度。圆心 0，
                       外缘 10。" 不再绑车 metaphor, 跨 5 metaphor pool (车 / 饼干 /
                       pizza / 盆栽 / 篝火) 都 fit. 操作明确 + 入门 framing 保留. */}
-                  8 个方向，各推到你此刻感觉到的程度。圆心 0，外缘 10。
+                  8 个方向，各推到你此刻感受到的程度。圆心 0，外缘 10。
                 </p>
                 <details className="mt-2 text-xs leading-relaxed text-zinc-400">
                   <summary className="cursor-pointer list-none underline-offset-2 hover:text-zinc-600 hover:underline [&::-webkit-details-marker]:hidden">
@@ -2595,7 +2595,7 @@ export default function Home() {
                   onClick={handleEnterPresence}
                   className="rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
                 >
-                  写下我此刻的感觉 →
+                  写下我此刻的感受 →
                 </button>
                 <button
                   type="button"
@@ -2624,7 +2624,7 @@ export default function Home() {
                         窄 viewport 把 "——" 单独 wrap 到下一行 (em dash 是
                         line-breakable 字符, 默认 wrap 行为视觉断裂). 整 unit
                         nowrap, 空间不够时整 unit 换下一行 (dash 跟字一起). */}
-                    我此刻<span className="whitespace-nowrap">感觉到——</span>
+                    我此刻<span className="whitespace-nowrap">感受到——</span>
                   </p>
                   <input
                     type="text"
@@ -2658,7 +2658,7 @@ export default function Home() {
                     placeholder={presencePlaceholder}
                     enterKeyHint="done"
                     className="w-full border-none bg-transparent p-0 text-2xl font-light leading-relaxed text-zinc-900 placeholder:text-zinc-300 focus:outline-none md:text-3xl"
-                    aria-label="我此刻感觉到"
+                    aria-label="我此刻感受到"
                   />
                   <button
                     type="button"
