@@ -26,11 +26,10 @@ interface MetaphorRendererProps {
   onFinish?: () => void;
 }
 
-// page.tsx running mode VBOX_RUN: x=-216 y=-180 w=432 h=420. non-car metaphor
-// 用 expanded viewBox h=750 给 lineup 紧凑 vertical (mobile container ~590px,
-// iPhone 12 viewport ~70%). lineup 行间距 180, animals BASE 40, horizontal
-// ±140 收紧让 lineup "塞满"容器不显空荡.
-const PIZZA_VBOX = "-216 -180 432 750";
+// page.tsx running mode VBOX_RUN: x=-216 y=-180 w=432 h=420. pizza metaphor
+// 用 expanded viewBox 500×850 (wider 给 ±160 col spacing fit, taller 给行距
+// 200 + 下移 lineup buffer). Mobile container ~340×576 px, iPhone 12 ~68%.
+const PIZZA_VBOX = "-250 -180 500 850";
 
 export function MetaphorRenderer({
   scores,

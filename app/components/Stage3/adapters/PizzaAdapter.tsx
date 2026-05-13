@@ -87,12 +87,11 @@ export const ANIMALS_BY_DIM: AnimalChar[] = [
 //     反思 hook 直观: 评分 = pizza 分得多少 = animal 显多大.
 //   - perspectiveScale: 后排 0.85x foreshortening (远小近大透视, 微差不破坏
 //     score → size mapping).
-//   - BASE 130 — score 10 animal ~156 px (bottom row), lineup punch 起来.
-//     slight overlap edge cases at score 10 (8 px each side), typical scores
-//     5-8 have healthy gap.
+//   - BASE 140 — score 10 animal ~168 px (bottom row), col spacing 160, slight
+//     overlap (4 px each side) at score 10. Typical scores 5-8 healthy gap.
 //   - 删除 animal.size character identity size — character 通过 PNG visual +
 //     color 区分, 不通过 size 区分.
-const BASE_SIZE_PX = 130;
+const BASE_SIZE_PX = 140;
 
 function AnimalImage({
   animal,
@@ -295,14 +294,14 @@ function WheelPizzaBody({
 //     下排 y=560, x=[-140, 0, 140] (dim 5, 6, 7)
 //   Split-view local = PizzaAdapter coord - (0, -50) = animal y + 50.
 const SLICE_TARGETS_LOCAL: Array<{ x: number; y: number }> = [
-  { x: -140, y: 250 }, // dim 0 河马
-  { x: 0, y: 250 }, // dim 1 兔子
-  { x: 140, y: 250 }, // dim 2 猫
-  { x: -70, y: 430 }, // dim 3 大象
-  { x: 70, y: 430 }, // dim 4 老鼠
-  { x: -140, y: 610 }, // dim 5 长颈鹿
-  { x: 0, y: 610 }, // dim 6 小鸟
-  { x: 140, y: 610 }, // dim 7 老虎
+  { x: -160, y: 290 }, // dim 0 河马 top (PizzaAdapter y=240)
+  { x: 0, y: 290 }, // dim 1 兔子
+  { x: 160, y: 290 }, // dim 2 猫
+  { x: -80, y: 490 }, // dim 3 大象 middle (y=440)
+  { x: 80, y: 490 }, // dim 4 老鼠
+  { x: -160, y: 690 }, // dim 5 长颈鹿 bottom (y=640)
+  { x: 0, y: 690 }, // dim 6 小鸟
+  { x: 160, y: 690 }, // dim 7 老虎
 ];
 const SLICE_START_LOCAL = { x: 110, y: 0 }; // wheel center (right square center)
 
@@ -316,7 +315,13 @@ export function PizzaAdapter(
   const [sectorOut, setSectorOut] = useState<boolean[]>(
     () => new Array(8).fill(false),
   );
+  // Per-animal pose state — animal 切 catch 在 slice arrival 时 (per dim),
+  // 不是 global pose state. animation feel "slice 落手 animal 才接到".
+  const [animalPoses, setAnimalPoses] = useState<Pose[]>(
+    () => new Array(8).fill("anticipate"),
+  );
   const sliceRefs = useRef<(SVGGElement | null)[]>([]);
+  const motionLineRefs = useRef<(SVGPathElement | null)[]>([]);
 
   useEffect(() => {
     // Pose timeline cascade (anticipate → catch → react → onFinish).
@@ -338,9 +343,20 @@ export function PizzaAdapter(
     };
   }, [tl, onFinish]);
 
+  // Pose phase sync: catch start → all animals stay anticipate (slice flying),
+  // react phase → all animals → react.
+  useEffect(() => {
+    if (pose === "anticipate") {
+      setAnimalPoses(new Array(8).fill("anticipate"));
+    } else if (pose === "react") {
+      setAnimalPoses(new Array(8).fill("react"));
+    }
+    // catch phase per-animal pose handled in slice 撕飞 useEffect.
+  }, [pose]);
+
   // Slice 撕飞 animation: catch phase 起始时, 8 slice 副本 from wheel center
-  // fly bezier arc 到 animal positions. Per-sector wheel fade out 跟 slice
-  // arrival 同步 (sectorOut state).
+  // fly bezier arc 到 animal positions. Per-sector wheel fade out + per-animal
+  // pose 切 catch 都 sync slice arrival.
   useEffect(() => {
     if (pose !== "catch") return;
     const timelines: gsap.core.Timeline[] = [];
@@ -349,11 +365,8 @@ export function PizzaAdapter(
       if (!elem) return;
       const target = SLICE_TARGETS_LOCAL[dimIdx];
       const score = Math.max(0, Math.min(10, scores[dimIdx] ?? 0));
-      // Slice size 跟 score 走: 0.4 (低分小) → 1.0 (满分大). 反思 hook:
-      // 高分 dim 飞大 slice (pizza 分得多), 低分 dim 飞小 slice (分得少).
+      // Slice size 跟 score 走: 0.4 (低分小) → 1.0 (满分大). 反思 hook.
       const scaleFactor = 0.4 + (score / 10) * 0.6;
-      // 起点 via gsap.set (cross-browser 一致 wheel center start, 不依赖
-      // attribute transform).
       gsap.set(elem, {
         x: SLICE_START_LOCAL.x,
         y: SLICE_START_LOCAL.y,
@@ -386,19 +399,36 @@ export function PizzaAdapter(
       stl.to(elem, { opacity: 0, duration: 0.2 });
       timelines.push(stl);
 
-      // Per-sector wheel fade out 跟 slice 撕飞 同步: slice arrival 时 sector
-      // 同步 fade out (sliceDelay + slice mid-flight ~0.6s).
-      const sectorOutTimer = window.setTimeout(
-        () => {
-          setSectorOut((prev) => {
-            const next = [...prev];
-            next[dimIdx] = true;
-            return next;
-          });
-        },
-        sliceDelay * 1000 + 650,
-      );
+      // Motion line trail (dashed bezier path along slice trajectory).
+      // Fade in catch start, fade out as slice arrives.
+      const lineElem = motionLineRefs.current[dimIdx];
+      if (lineElem) {
+        gsap.set(lineElem, { opacity: 0 });
+        const lineTl = gsap.timeline({ delay: sliceDelay });
+        lineTl.to(lineElem, { opacity: 0.45, duration: 0.15 });
+        lineTl.to(lineElem, { opacity: 0, duration: 0.35, delay: 0.4 });
+        timelines.push(lineTl);
+      }
+
+      // Per-sector wheel fade out + per-animal pose 切 catch 都同步 slice
+      // arrival (sliceDelay + 0.65s slice mid-flight).
+      const arrivalMs = sliceDelay * 1000 + 650;
+      const sectorOutTimer = window.setTimeout(() => {
+        setSectorOut((prev) => {
+          const next = [...prev];
+          next[dimIdx] = true;
+          return next;
+        });
+      }, arrivalMs);
+      const animalPoseTimer = window.setTimeout(() => {
+        setAnimalPoses((prev) => {
+          const next = [...prev];
+          next[dimIdx] = "catch";
+          return next;
+        });
+      }, arrivalMs);
       timers.push(sectorOutTimer);
+      timers.push(animalPoseTimer);
     });
     return () => {
       timelines.forEach((t) => t.kill());
@@ -420,8 +450,23 @@ export function PizzaAdapter(
   return (
     <g className="pizza-adapter" data-pose={pose}>
       {/* Anticipate phase: single square pizza box w/ "PIZZA" label.
-          Scale equal x/y (放弃 v2 §二 透视压扁) 让 box visual 正方形 (square
-          pizza = square box, liushu intuition). */}
+          Cardboard texture pattern + corner accents + PIZZA logo enhancement. */}
+      <defs>
+        {/* Cardboard texture — diagonal hatch lines */}
+        <pattern
+          id="cardboard-texture"
+          patternUnits="userSpaceOnUse"
+          width={8}
+          height={8}
+        >
+          <path
+            d="M0,8 L8,0"
+            stroke="#a67d4d"
+            strokeWidth={0.4}
+            opacity={0.35}
+          />
+        </pattern>
+      </defs>
       <g
         className="closed-box"
         style={{
@@ -430,6 +475,7 @@ export function PizzaAdapter(
         }}
         transform="translate(0 -50) scale(0.65 0.65)"
       >
+        {/* Box cardboard fill */}
         <rect
           x={-200}
           y={-200}
@@ -441,6 +487,17 @@ export function PizzaAdapter(
           stroke="#7a5a30"
           strokeWidth={2.5}
         />
+        {/* Cardboard texture overlay (diagonal hatching) */}
+        <rect
+          x={-200}
+          y={-200}
+          width={400}
+          height={400}
+          rx={28}
+          ry={28}
+          fill="url(#cardboard-texture)"
+        />
+        {/* Inner outline 壁厚 */}
         <rect
           x={-188}
           y={-188}
@@ -453,6 +510,36 @@ export function PizzaAdapter(
           strokeWidth={1.5}
           opacity={0.6}
         />
+        {/* Corner accent dots (像 box flap reinforcement) */}
+        {[
+          { x: -170, y: -170 },
+          { x: 170, y: -170 },
+          { x: -170, y: 170 },
+          { x: 170, y: 170 },
+        ].map((p, i) => (
+          <circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r={5}
+            fill="#7a5a30"
+            opacity={0.5}
+          />
+        ))}
+        {/* PIZZA logo — shadow + main text (subtle depth) */}
+        <text
+          x={3}
+          y={31}
+          textAnchor="middle"
+          fontSize={110}
+          fontWeight={900}
+          fill="#5d3d1a"
+          opacity={0.35}
+          fontFamily="ui-serif, Georgia, serif"
+          letterSpacing={4}
+        >
+          PIZZA
+        </text>
         <text
           x={0}
           y={28}
@@ -460,11 +547,23 @@ export function PizzaAdapter(
           fontSize={110}
           fontWeight={900}
           fill="#7a5a30"
-          opacity={0.7}
+          opacity={0.75}
           fontFamily="ui-serif, Georgia, serif"
           letterSpacing={4}
         >
           PIZZA
+        </text>
+        {/* Small decorative stars under PIZZA logo */}
+        <text
+          x={0}
+          y={70}
+          textAnchor="middle"
+          fontSize={28}
+          fill="#7a5a30"
+          opacity={0.4}
+          letterSpacing={6}
+        >
+          ★ ★ ★
         </text>
       </g>
 
@@ -530,9 +629,34 @@ export function PizzaAdapter(
           <WheelPizzaBody scores={scores} sectorOut={sectorOut} />
         </g>
 
+        {/* Motion line trail — dashed bezier path along slice trajectory.
+            Calvin & Hobbes 经典手法, fade in catch start, fade out as slice
+            arrives. Each line follows same bezier path as slice. */}
+        <g className="motion-lines">
+          {ANIMALS_BY_DIM.map((animal, dimIdx) => {
+            const target = SLICE_TARGETS_LOCAL[dimIdx];
+            const peakX = (SLICE_START_LOCAL.x + target.x) / 2;
+            const peakY = (SLICE_START_LOCAL.y + target.y) / 2 - 60;
+            return (
+              <path
+                key={`motion-${animal.id}`}
+                ref={(el) => {
+                  motionLineRefs.current[dimIdx] = el;
+                }}
+                d={`M${SLICE_START_LOCAL.x},${SLICE_START_LOCAL.y} Q${peakX},${peakY} ${target.x},${target.y}`}
+                fill="none"
+                stroke={animal.color}
+                strokeWidth={1.5}
+                strokeDasharray="5 4"
+                strokeLinecap="round"
+                style={{ opacity: 0 }}
+              />
+            );
+          })}
+        </g>
+
         {/* Slice 副本 撕飞 — catch phase 时 8 slices fly from wheel center to
-            animal positions (staggered start). 位置 via gsap.set (not attribute
-            transform), 确保起点真在 wheel center. */}
+            animal positions via bezier arc (staggered start). */}
         <g className="slice-pieces">
           {ANIMALS_BY_DIM.map((animal, dimIdx) => (
             <g
@@ -542,7 +666,6 @@ export function PizzaAdapter(
               }}
               style={{ opacity: 0 }}
             >
-              {/* Triangular pizza slice — apex up, base wide (像 pizza wedge) */}
               <path
                 d="M0,-14 L-11,9 L11,9 Z"
                 fill={animal.color}
@@ -550,7 +673,6 @@ export function PizzaAdapter(
                 strokeWidth={1.4}
                 strokeLinejoin="round"
               />
-              {/* Cheese yellow inner tint (small triangle for slice identity) */}
               <path
                 d="M0,-9 L-7,6 L7,6 Z"
                 fill="#f5d061"
@@ -561,37 +683,32 @@ export function PizzaAdapter(
         </g>
       </g>
 
-      {/* Phase 3b 后续: 8 slice 副本 overlay (起始 sector position → bezier arc
-          飞到对应 animal 手中). 当前 framework verify 阶段不实施. */}
-      <g className="pizza-slice-copies" />
-
-      {/* Lineup 3-2-3 — in-line lineup. viewBox h=750 紧凑 container, lineup
-          vertical span 360 单位 (y=200 to 560), 行间距均匀 180. Horizontal
-          ±140 收紧 (从 ±180), 中排 ±70 错位 in between -140/0/140. */}
+      {/* Lineup 3-2-3 — viewBox 500×850, 行距 200 单位 (拉大 from 180), col
+          spacing ±160 (从 ±140), y 下移 (从 200/380/560 → 240/440/640).
+          animalPoses[8] per-dim — slice arrival 时该 animal 切 catch. */}
       {/* 上排 3 (dim 0,1,2 = 河马/兔子/猫): 后方, perspective 0.85x */}
       <g className="animal-lineup-top">
         {[0, 1, 2].map((dimIdx, colIdx) => (
           <AnimalImage
             key={ANIMALS_BY_DIM[dimIdx].id}
             animal={ANIMALS_BY_DIM[dimIdx]}
-            pose={pose}
-            x={-140 + colIdx * 140}
-            y={200}
+            pose={animalPoses[dimIdx]}
+            x={-160 + colIdx * 160}
+            y={240}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={0.85}
           />
         ))}
       </g>
-      {/* 中排 2 (dim 3,4 = 大象/老鼠): in-line center, x=±70 错位 in between
-          上下 columns (-140/0/140). */}
+      {/* 中排 2 (dim 3,4 = 大象/老鼠): in-line center, x=±80 错位 */}
       <g className="animal-lineup-middle">
         {[3, 4].map((dimIdx, idx) => (
           <AnimalImage
             key={ANIMALS_BY_DIM[dimIdx].id}
             animal={ANIMALS_BY_DIM[dimIdx]}
-            pose={pose}
-            x={idx === 0 ? -70 : 70}
-            y={380}
+            pose={animalPoses[dimIdx]}
+            x={idx === 0 ? -80 : 80}
+            y={440}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={0.95}
           />
@@ -603,17 +720,14 @@ export function PizzaAdapter(
           <AnimalImage
             key={ANIMALS_BY_DIM[dimIdx].id}
             animal={ANIMALS_BY_DIM[dimIdx]}
-            pose={pose}
-            x={-140 + colIdx * 140}
-            y={560}
+            pose={animalPoses[dimIdx]}
+            x={-160 + colIdx * 160}
+            y={640}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={1.0}
           />
         ))}
       </g>
-
-      {/* Phase 3b 后续: motion line dashed trail (slice 飞 trajectory 旁) */}
-      <g className="motion-lines" />
     </g>
   );
 }
