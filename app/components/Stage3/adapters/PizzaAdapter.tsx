@@ -87,11 +87,12 @@ export const ANIMALS_BY_DIM: AnimalChar[] = [
 //     反思 hook 直观: 评分 = pizza 分得多少 = animal 显多大.
 //   - perspectiveScale: 后排 0.85x foreshortening (远小近大透视, 微差不破坏
 //     score → size mapping).
-//   - BASE 110 — score 10 animal ~132 px (bottom row), 1.5x larger 让 lineup
-//     "塞满" 不显松散.
+//   - BASE 130 — score 10 animal ~156 px (bottom row), lineup punch 起来.
+//     slight overlap edge cases at score 10 (8 px each side), typical scores
+//     5-8 have healthy gap.
 //   - 删除 animal.size character identity size — character 通过 PNG visual +
 //     color 区分, 不通过 size 区分.
-const BASE_SIZE_PX = 110;
+const BASE_SIZE_PX = 130;
 
 function AnimalImage({
   animal,
