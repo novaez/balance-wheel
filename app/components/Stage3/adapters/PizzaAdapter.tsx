@@ -18,7 +18,8 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { gsap } from "gsap";
 import type { AdapterProps } from "../types";
 import { useAnimation } from "../useAnimation";
 import { HatchFill } from "../primitives/HatchFill";
@@ -202,10 +203,6 @@ function WheelPizzaBody({ scores }: { scores: number[] }) {
 
   return (
     <g className="wheel-pizza-body">
-      {/* Background full pizza circle — cheese 黄底 (always visible, wheel 视觉
-          = consistent full circle 不论 sectors 大小). 真居中 wheel local (0,0). */}
-      <circle cx={0} cy={0} r={MAX_RADIUS} fill="#f5d061" opacity={0.9} />
-
       <defs>
         {sectors.map((s) => (
           <clipPath key={`pizza-clip-${s.dimIdx}`} id={`pizza-clip-${s.dimIdx}`}>
@@ -299,12 +296,32 @@ function WheelPizzaBody({ scores }: { scores: number[] }) {
 // PizzaAdapter — main entry. wheel pizza body + 8 animal lineup + pose timeline.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Slice 撕飞 终点 (in split-view local coord, after split-view translate(0,-50)
+// to PizzaAdapter coord: split-view local + (0,-50)). 8 animal lineup positions.
+//   Animal lineup in PizzaAdapter coord:
+//     上排 y=200, x=[-140, 0, 140] (dim 0, 1, 2)
+//     中排 y=380, x=[-70, 70] (dim 3, 4)
+//     下排 y=560, x=[-140, 0, 140] (dim 5, 6, 7)
+//   Split-view local = PizzaAdapter coord - (0, -50) = animal y + 50.
+const SLICE_TARGETS_LOCAL: Array<{ x: number; y: number }> = [
+  { x: -140, y: 250 }, // dim 0 河马
+  { x: 0, y: 250 }, // dim 1 兔子
+  { x: 140, y: 250 }, // dim 2 猫
+  { x: -70, y: 430 }, // dim 3 大象
+  { x: 70, y: 430 }, // dim 4 老鼠
+  { x: -140, y: 610 }, // dim 5 长颈鹿
+  { x: 0, y: 610 }, // dim 6 小鸟
+  { x: 140, y: 610 }, // dim 7 老虎
+];
+const SLICE_START_LOCAL = { x: 110, y: 0 }; // wheel center (right square center)
+
 export function PizzaAdapter(
   props: Extract<AdapterProps, { metaphor: "pizza" }>,
 ) {
   const { scores, onFinish } = props;
   const tl = useAnimation();
   const [pose, setPose] = useState<Pose>("anticipate");
+  const sliceRefs = useRef<(SVGGElement | null)[]>([]);
 
   useEffect(() => {
     // Pose timeline cascade (anticipate → catch → react → onFinish).
@@ -319,6 +336,33 @@ export function PizzaAdapter(
       tl.kill();
     };
   }, [tl, onFinish]);
+
+  // Slice 撕飞 animation: catch phase 起始时, 8 slice 副本 from wheel center
+  // fly to 8 animal positions, staggered start.
+  useEffect(() => {
+    if (pose !== "catch") return;
+    const timelines: gsap.core.Timeline[] = [];
+    sliceRefs.current.forEach((elem, dimIdx) => {
+      if (!elem) return;
+      const target = SLICE_TARGETS_LOCAL[dimIdx];
+      const dx = target.x - SLICE_START_LOCAL.x;
+      const dy = target.y - SLICE_START_LOCAL.y;
+      gsap.set(elem, { x: 0, y: 0, opacity: 0 });
+      const stl = gsap.timeline({ delay: dimIdx * 0.08 });
+      stl.to(elem, { opacity: 1, duration: 0.1 });
+      stl.to(elem, {
+        x: dx,
+        y: dy,
+        duration: 0.65,
+        ease: "power2.in",
+      }, 0);
+      stl.to(elem, { opacity: 0, duration: 0.2 });
+      timelines.push(stl);
+    });
+    return () => {
+      timelines.forEach((t) => t.kill());
+    };
+  }, [pose]);
 
   // Layout (viewBox VBOX_RUN ≈ x[-216,216] y[-180,240]):
   //   Pizza stage (box body + wheel + lid 共享 transform 透视压扁):
@@ -440,6 +484,39 @@ export function PizzaAdapter(
           }}
         >
           <WheelPizzaBody scores={scores} />
+        </g>
+
+        {/* Slice 副本 撕飞 — catch phase 时 8 slices fly from wheel center to
+            animal positions (staggered start). 起初 opacity 0 invisible, GSAP
+            animation fade in + translate + fade out on arrival. */}
+        <g className="slice-pieces">
+          {ANIMALS_BY_DIM.map((animal, dimIdx) => (
+            <g
+              key={`slice-${animal.id}`}
+              ref={(el) => {
+                sliceRefs.current[dimIdx] = el;
+              }}
+              transform={`translate(${SLICE_START_LOCAL.x} ${SLICE_START_LOCAL.y})`}
+              style={{ opacity: 0 }}
+            >
+              {/* Triangular pizza slice — apex up, base wide (像 pizza wedge) */}
+              <path
+                d="M0,-14 L-11,9 L11,9 Z"
+                fill={animal.color}
+                stroke={darken(animal.color, 0.55)}
+                strokeWidth={1.4}
+                strokeLinejoin="round"
+              />
+              {/* Cheese yellow inner tint (small triangle) */}
+              <path
+                d="M0,-9 L-7,6 L7,6 Z"
+                fill="#f5d061"
+                opacity={0.6}
+              />
+              {/* Pepperoni dot */}
+              <circle cx={0} cy={1} r={2} fill="#b91c1c" />
+            </g>
+          ))}
         </g>
       </g>
 
