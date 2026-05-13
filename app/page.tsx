@@ -6,7 +6,6 @@ import {
   METAPHOR_POOL,
 } from "./components/Stage3/selectMetaphor";
 import {
-  METAPHOR_DISPLAY_NAME_ZH,
   type MetaphorPick,
   type MetaphorName,
 } from "./components/Stage3/types";
@@ -275,6 +274,68 @@ function buildDoodleSvgString(variant: DoodleVariant, sizePx: number): string {
     <path d="M -2 -7 Q -3 -10 -1 -13"/>
     <path d="M 2 -7 Q 3 -10 1 -13"/>
   </g>
+</svg>`;
+  }
+}
+
+// Phase 3 v2 §六 — 卡片 metaphor mini icon (替换原"今日·{metaphor}" 文本 footer).
+// 5 metaphor 各自 simple SVG icon, 跟 doodle 同 layer 视觉 sticker.
+// 位置: 卡片底部 watermark 下方 (替换原 text 位置). 跟 doodle (random corner)
+// 独立 layer.
+function buildMetaphorIconSvg(metaphor: MetaphorName, sizePx: number): string {
+  const ns = 'xmlns="http://www.w3.org/2000/svg"';
+  switch (metaphor) {
+    case "car":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-25 -25 50 50">
+  <g fill="none" stroke="#3a3a3a" stroke-width="2.2" stroke-linecap="round">
+    <circle r="22"/>
+    <circle r="3" fill="#3a3a3a"/>
+    <line x1="0" y1="-3" x2="0" y2="-19"/>
+    <line x1="0" y1="3" x2="0" y2="19"/>
+    <line x1="-3" y1="0" x2="-19" y2="0"/>
+    <line x1="3" y1="0" x2="19" y2="0"/>
+  </g>
+</svg>`;
+    case "pizza":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-25 -25 50 50">
+  <circle r="22" fill="#f5d061" stroke="#b8843e" stroke-width="2"/>
+  <g stroke="#7a5a30" stroke-width="0.7" stroke-linecap="round" opacity="0.55">
+    <line x1="0" y1="0" x2="0" y2="-22"/>
+    <line x1="0" y1="0" x2="15.5" y2="-15.5"/>
+    <line x1="0" y1="0" x2="22" y2="0"/>
+    <line x1="0" y1="0" x2="15.5" y2="15.5"/>
+    <line x1="0" y1="0" x2="0" y2="22"/>
+    <line x1="0" y1="0" x2="-15.5" y2="15.5"/>
+    <line x1="0" y1="0" x2="-22" y2="0"/>
+    <line x1="0" y1="0" x2="-15.5" y2="-15.5"/>
+  </g>
+  <circle cx="-9" cy="-5" r="3" fill="#b91c1c"/>
+  <circle cx="7" cy="-10" r="2.5" fill="#b91c1c"/>
+  <circle cx="-3" cy="8" r="2.6" fill="#b91c1c"/>
+  <circle cx="10" cy="6" r="2.4" fill="#b91c1c"/>
+</svg>`;
+    case "cookie":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-25 -25 50 50">
+  <circle r="22" fill="#c08c4a" stroke="#7a5a30" stroke-width="2"/>
+  <circle cx="-8" cy="-7" r="2.5" fill="#3d2614"/>
+  <circle cx="9" cy="-3" r="2.5" fill="#3d2614"/>
+  <circle cx="-3" cy="6" r="2.5" fill="#3d2614"/>
+  <circle cx="8" cy="10" r="2.3" fill="#3d2614"/>
+  <path d="M22,-6 Q15,0 22,6 Z" fill="#fffdf8" stroke="#7a5a30" stroke-width="1.5"/>
+</svg>`;
+    case "pot-plants":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-25 -25 50 50">
+  <path d="M-15,6 L-12,22 L12,22 L15,6 Z" fill="#a67d4d" stroke="#7a5a30" stroke-width="1.6"/>
+  <ellipse cx="-8" cy="-2" rx="6" ry="11" fill="#10b981" stroke="#0a7f5a" stroke-width="1" transform="rotate(-25 -8 -2)"/>
+  <ellipse cx="8" cy="-4" rx="6" ry="11" fill="#10b981" stroke="#0a7f5a" stroke-width="1" transform="rotate(25 8 -4)"/>
+  <ellipse cx="0" cy="-11" rx="5" ry="10" fill="#10b981" stroke="#0a7f5a" stroke-width="1"/>
+</svg>`;
+    case "campfires":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-25 -25 50 50">
+  <line x1="-15" y1="16" x2="15" y2="16" stroke="#7a5a30" stroke-width="5" stroke-linecap="round"/>
+  <line x1="-12" y1="20" x2="12" y2="20" stroke="#6b3e1a" stroke-width="4" stroke-linecap="round"/>
+  <path d="M0,-16 Q-9,-6 -6,5 Q-3,11 0,13 Q3,11 6,5 Q9,-6 0,-16 Z" fill="#f97316" stroke="#c45f0a" stroke-width="1.4"/>
+  <path d="M0,-9 Q-4,-2 -2,6 Q2,6 4,-2 Q4,-5 0,-9 Z" fill="#f5d061"/>
 </svg>`;
   }
 }
@@ -847,11 +908,11 @@ async function renderCardToPng(opts: {
   doodleVariant: DoodleVariant;
   doodlePosIdx: number;
   doodleRotation: number;
-  // Phase 3 — Stage 6 footer "今日 · {metaphor 中文名}" (Stage 3 ↔ Stage 6 continuity).
-  // null = pick 没 ready (pre-mount or hard-reload edge case), skip footer.
-  metaphorNameZh: string | null;
+  // Phase 3 v2 §六 — Stage 6 卡片 metaphor mini icon (替换原文本 footer).
+  // null = pick 没 ready (pre-mount or hard-reload edge case), skip icon.
+  metaphor: MetaphorName | null;
 }): Promise<Blob> {
-  const { presenceText, commitmentText, signOffDate, scores, doodleVariant, doodlePosIdx, doodleRotation, metaphorNameZh } = opts;
+  const { presenceText, commitmentText, signOffDate, scores, doodleVariant, doodlePosIdx, doodleRotation, metaphor } = opts;
 
   // 等 webfont 加载——这步是 PNG 用 webfont 不 fallback 的关键 (跟旧版 B' 不同,
   // 旧版在 isolated origin 拿不到 webfont, 必须 fallback 到 system 楷体)。
@@ -953,12 +1014,31 @@ async function renderCardToPng(opts: {
     ctx.fillStyle = "#a1a1aa";
     ctx.fillText("wheel of life", PNG_WIDTH / 2, PNG_HEIGHT - 70);
 
-    // Phase 3 — Stage 6 footer "今日 · {metaphor 中文名}". 位置: watermark 下方
-    // ~40px, zinc-500 small font. DOM <p text-xs text-zinc-500> 同步.
-    if (metaphorNameZh) {
-      ctx.font = '22px system-ui, -apple-system, "Helvetica Neue", sans-serif';
-      ctx.fillStyle = "#71717a"; // zinc-500
-      ctx.fillText(`今日 · ${metaphorNameZh}`, PNG_WIDTH / 2, PNG_HEIGHT - 30);
+    // Phase 3 v2 §六 — 卡片 metaphor mini icon (替换原"今日·{metaphor}" 文本).
+    // 位置: watermark 下方 ~5px, size 90px PNG (2.5x DOM 36px), centered.
+    // Render SVG → image → drawImage (跟 doodle 同 pattern).
+    if (metaphor) {
+      const iconPngSize = 90;
+      const iconSvg = buildMetaphorIconSvg(metaphor, iconPngSize);
+      const iconBlob = new Blob([iconSvg], {
+        type: "image/svg+xml;charset=utf-8",
+      });
+      const iconUrl = URL.createObjectURL(iconBlob);
+      try {
+        const iconImg = await new Promise<HTMLImageElement>(
+          (resolve, reject) => {
+            const im = new Image();
+            im.onload = () => resolve(im);
+            im.onerror = (e) => reject(e);
+            im.src = iconUrl;
+          },
+        );
+        const iconX = (PNG_WIDTH - iconPngSize) / 2;
+        const iconY = PNG_HEIGHT - 60; // 30px below watermark (which 是 PNG_HEIGHT - 70)
+        ctx.drawImage(iconImg, iconX, iconY, iconPngSize, iconPngSize);
+      } finally {
+        URL.revokeObjectURL(iconUrl);
+      }
     }
 
     // Phase 2 Sub-task 2 — doodle drawn last (overlay over wheel/text), at
@@ -1400,8 +1480,8 @@ export default function Home() {
         doodleVariant: selectedDoodle,
         doodlePosIdx: selectedDoodlePosIdx,
         doodleRotation: selectedDoodleRotation,
-        // Phase 3 — Stage 6 footer "今日 · {metaphor 中文名}"
-        metaphorNameZh: pick ? METAPHOR_DISPLAY_NAME_ZH[pick.metaphor] : null,
+        // Phase 3 v2 §六 — Stage 6 卡片 metaphor mini icon (替换原文本 footer)
+        metaphor: pick ? pick.metaphor : null,
       });
       const dateYmd = formatDateYMD(presence.at);
       const filename = `wheel-of-life-${dateYmd}.png`;
@@ -1978,14 +2058,20 @@ export default function Home() {
                 wheel of life
               </p>
 
-              {/* Phase 3 — Stage 6 footer "今日 · {metaphor 中文名}". Stage 3 ↔
-                  Stage 6 continuity: 用户看 metaphor 跑完, 卡片底部呼应 metaphor
-                  name, 避免 "我看的是饼干, 卡片是 abstract wheel" 体验断.
-                  pick 在 page 卸载前一直 hold (visit-level), 写到卡片时取 pick.metaphor. */}
+              {/* Phase 3 v2 §六 — 卡片 metaphor mini icon (替换原"今日·{metaphor}"
+                  文本 footer, 跨 5 metaphor 视觉 sticker). 跟 doodle 独立 layer,
+                  位置 watermark 下方. liushu polish: text "今日 · pizza" 看着奇怪,
+                  换成 mini icon. SVG via data-URI <img> (trusted content). */}
               {pick && (
-                <p className="text-xs tracking-wide text-zinc-500">
-                  今日 · {METAPHOR_DISPLAY_NAME_ZH[pick.metaphor]}
-                </p>
+                <div className="flex justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`data:image/svg+xml;utf8,${encodeURIComponent(buildMetaphorIconSvg(pick.metaphor, 36))}`}
+                    width={36}
+                    height={36}
+                    alt=""
+                  />
+                </div>
               )}
             </div>
           </article>
