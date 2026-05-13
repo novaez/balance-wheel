@@ -382,10 +382,9 @@ export function PizzaAdapter(
         </text>
       </g>
 
-      {/* Catch + React phase: 2 squares 连一起 with 中间窄 hinge ("opened
-          pizza box" 视觉). 左 square 160×200 + 中间 hinge 20×160 (缺口 20 单位
-          上下, 高度更窄 thin crease) + 右 square 160×200. 左 square = lid inner
-          (翻 90° back, viewer 看到的是 lid 内侧空 cardboard). */}
+      {/* Catch + React phase: 2 squares 连一起 with 中间窄 hinge.
+          每个 half 是 180×180 正方形 (1:1 aspect). Combined: x [-200, 200]
+          y [-90, 90]. Hinge 20×140 (缺口 20 上下). 披萨真居中 right square. */}
       <g
         className="split-view"
         style={{
@@ -394,21 +393,21 @@ export function PizzaAdapter(
         }}
         transform="translate(0 -50)"
       >
-        {/* Combined outline path: 2 squares (200 tall) + 中间 hinge (20 wide,
-            缺口 20 单位 上下). clockwise from top-left. x [-180,180] y [-100,100] */}
+        {/* Combined outline path: 2 squares 180×180 + 中间 hinge 20×140.
+            clockwise from top-left. */}
         <path
-          d="M-180,-82 a18,18 0 0 1 18,-18 H-10 V-80 H10 V-100 H162 a18,18 0 0 1 18,18 V82 a18,18 0 0 1 -18,18 H10 V80 H-10 V100 H-162 a18,18 0 0 1 -18,-18 Z"
+          d="M-200,-72 a18,18 0 0 1 18,-18 H-10 V-70 H10 V-90 H182 a18,18 0 0 1 18,18 V72 a18,18 0 0 1 -18,18 H10 V70 H-10 V90 H-182 a18,18 0 0 1 -18,-18 Z"
           fill="#c89968"
           stroke="#7a5a30"
           strokeWidth={2.5}
           strokeLinejoin="round"
         />
-        {/* Inner outline 壁厚 — 2 separate rounded rects (skip hinge inner) */}
+        {/* Inner outline 壁厚 — 2 separate rounded squares 160×160 (inset 10) */}
         <rect
-          x={-170}
-          y={-90}
-          width={140}
-          height={180}
+          x={-190}
+          y={-80}
+          width={160}
+          height={160}
           rx={10}
           ry={10}
           fill="none"
@@ -418,9 +417,9 @@ export function PizzaAdapter(
         />
         <rect
           x={30}
-          y={-90}
-          width={140}
-          height={180}
+          y={-80}
+          width={160}
+          height={160}
           rx={10}
           ry={10}
           fill="none"
@@ -431,10 +430,10 @@ export function PizzaAdapter(
 
         {/* Left square interior: 空 cardboard (lid inner side). PIZZA label 删除. */}
 
-        {/* Right square interior: wheel pizza body centered at x=100, scale 0.5
-            (fill right square width). */}
+        {/* Right square interior: wheel pizza body centered at x=110 (right
+            square center), scale 0.5 uniform (no deformation, 正上方视角). */}
         <g
-          transform="translate(100 0) scale(0.5 0.5)"
+          transform="translate(110 0) scale(0.5 0.5)"
           style={{
             opacity: pose === "catch" ? 1 : 0,
             transition: "opacity 0.6s ease-out",
