@@ -2026,7 +2026,7 @@ export default function Home() {
             onClick={handleBack}
             className="text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
           >
-            回去调整车轮
+            回去调整
           </button>
         </main>
       </div>
@@ -2047,9 +2047,8 @@ export default function Home() {
             .filter(Boolean)
             .join(" ")}
         >
-          <h2 className="mb-6 self-start text-sm font-medium tracking-wide text-zinc-500">
-            我人生的马车
-          </h2>
+          {/* Phase 3 文案改造 — 删除 "我人生的马车" H2 (Stage 2 wheel section
+              不需 title, wheel SVG 自显; cross-metaphor 协调 not 绑车 metaphor). */}
           {/* Wheel SVG — Phase 1.5 装上 pointer 事件做 1st person 推扇区。
               touch-action: none 阻止 mobile 默认 pull-to-refresh / page scroll
               在 wheel 区域上拦截 pointer move（关键 mobile fix）。
@@ -2580,11 +2579,10 @@ export default function Home() {
                 className="fade-rise text-3xl font-medium leading-snug tracking-tight text-zinc-900 md:text-4xl"
                 style={{ animationDelay: "1.2s" }}
               >
-                {/* Phase 3 文案改造 — Stage 4 reflect inquiry phrasing
-                    (design §五 candidate C): "颠簸" 保留 Phase 1.6 register
-                    continuity 但通用感受词不绑车 metaphor. 8 个方向 + 此刻最
-                    颠 = metaphor-agnostic 自反 anchor. */}
-                哪一面最让你感到颠簸？
+                {/* Phase 3 文案改造 — 改为 "你感受到了什么?" (liushu 拍板,
+                    cross-metaphor 协调, 删 "颠簸"车-rooted 词). 开放式 inquiry,
+                    跨 5 metaphor 都 fit, presence 自然 surface 体感. */}
+                你感受到了什么？
               </h1>
               <div
                 className="fade-rise flex flex-col gap-3"
@@ -2722,7 +2720,7 @@ export default function Home() {
                       onClick={handleBack}
                       className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
                     >
-                      回去调整车轮
+                      回去调整
                     </button>
                   </div>
                 </>

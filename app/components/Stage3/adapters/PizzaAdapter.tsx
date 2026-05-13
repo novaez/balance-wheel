@@ -31,17 +31,17 @@ if (typeof window !== "undefined") {
   gsap.registerPlugin(MotionPathPlugin);
 }
 
-export const PIZZA_DURATION_MS = 8000;
+export const PIZZA_DURATION_MS = 7000;
 
 type Pose = "anticipate" | "catch" | "react";
 
 // Pose 时间轴 (per v2 §四 12 principles 兑现):
-// anticipate (期待眼神 + PNG load buffer) 0-3s → catch (split view + pizza
-// reveal) 3-5.5s → react (笑 + 摇手 + pizza fade) 5.5-8s → onFinish.
-// 拉长 from 5.5s → 8s: PNG 首次加载缓冲 + split view transition 时间.
+// anticipate (期待眼神 + closed box dwell) 0-2s → catch (split view + slice
+// 撕飞 + animals catch) 2-4.5s → react (笑 + 摇手 + pizza fade) 4.5-7s → onFinish.
+// liushu polish: anticipate 缩短 (3s → 2s, 盒子打开前不停留过久).
 const POSE_TIMELINE = {
-  catchAt: 3000,
-  reactAt: 5500,
+  catchAt: 2000,
+  reactAt: 4500,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
