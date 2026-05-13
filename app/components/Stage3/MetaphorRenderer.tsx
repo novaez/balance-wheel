@@ -27,9 +27,9 @@ interface MetaphorRendererProps {
 }
 
 // page.tsx running mode VBOX_RUN: x=-216 y=-180 w=432 h=420. pizza metaphor
-// 用 expanded viewBox 540×920 (wider 给 ±170 col spacing fit, taller 给行距
-// 230 + 上排 y=240 锁定 buffer). Mobile container ~340×579 px, iPhone 12 ~69%.
-const PIZZA_VBOX = "-270 -180 540 920";
+// 用 expanded viewBox 540×990. Lineup vertical 下移 (上 330, 中 550, 下 770).
+// Mobile container ~340×624 px, iPhone 12 ~74%.
+const PIZZA_VBOX = "-270 -180 540 990";
 
 export function MetaphorRenderer({
   scores,
