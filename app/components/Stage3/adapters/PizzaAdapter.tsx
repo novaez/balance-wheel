@@ -24,16 +24,17 @@ import { useAnimation } from "../useAnimation";
 import { HatchFill } from "../primitives/HatchFill";
 import { mulberry32 } from "../random";
 
-export const PIZZA_DURATION_MS = 5500;
+export const PIZZA_DURATION_MS = 8000;
 
 type Pose = "anticipate" | "catch" | "react";
 
 // Pose 时间轴 (per v2 §四 12 principles 兑现):
-// anticipate (期待眼神) 0-2s → catch (slice 落手 squash) 2-3.5s →
-// react (笑 + 摇手 follow-through) 3.5-5.5s → onFinish.
+// anticipate (期待眼神 + PNG load buffer) 0-3s → catch (split view + pizza
+// reveal) 3-5.5s → react (笑 + 摇手 + pizza fade) 5.5-8s → onFinish.
+// 拉长 from 5.5s → 8s: PNG 首次加载缓冲 + split view transition 时间.
 const POSE_TIMELINE = {
-  catchAt: 2000,
-  reactAt: 3500,
+  catchAt: 3000,
+  reactAt: 5500,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -79,7 +80,8 @@ export const ANIMALS_BY_DIM: AnimalChar[] = [
 //     分数低就变小, 视觉反差读 '健康分低'". 双维度 score → animal size
 //     mapping 增强 reflective tension.
 //   - perspectiveScale: 后排 0.85x foreshortening (远小近大透视)
-const BASE_SIZE_PX = 30;
+//   - BASE 40 (从 30) — 整体动物 1.33x larger, lineup 视觉 punch 起来
+const BASE_SIZE_PX = 40;
 
 function AnimalImage({
   animal,
@@ -172,6 +174,9 @@ function WheelPizzaBody({ scores }: { scores: number[] }) {
   // 每 sector 算 path + clip — 跟 page.tsx Stage 1-2 主 wheel 同算法
   // (ScribbleHatchingFill 蜡笔 multiply hatching + outline). 视觉 register
   // 跟 Stage 2 wheel 连续, "this is the wheel I just painted".
+  //
+  // 无 internal transform — caller wrap 应用 transform 决定 wheel 位置/缩放.
+  // (split view 时 right square wrap with own scale; anticipate 不用 wheel)
   const sectors = ANIMALS_BY_DIM.map((animal, dimIdx) => {
     const startDeg = (dimIdx / 8) * 360 - 90;
     const endDeg = ((dimIdx + 1) / 8) * 360 - 90;
@@ -323,12 +328,16 @@ export function PizzaAdapter(
   //   Paint order (z 后到前): pizza stage → top → middle → bottom
   return (
     <g className="pizza-adapter" data-pose={pose}>
-      {/* Pizza stage — box + wheel + lid 共享 perspective transform */}
+      {/* Anticipate phase: single closed pizza box w/ "PIZZA" label.
+          (liushu confirmed "挺好" 不动 visual) */}
       <g
-        className="pizza-stage"
+        className="closed-box"
+        style={{
+          opacity: pose === "anticipate" ? 1 : 0,
+          transition: "opacity 0.6s ease-out",
+        }}
         transform="translate(0 -60) scale(0.7 0.55)"
       >
-        {/* Box body (一直 visible) — cardboard color, inner outline 壁厚 */}
         <rect
           x={-200}
           y={-200}
@@ -352,50 +361,106 @@ export function PizzaAdapter(
           strokeWidth={1.5}
           opacity={0.6}
         />
-
-        {/* Wheel pizza body — visible 只在 catch phase. fade in 当 lid 打开,
-            fade out 当 react (分完了). */}
-        <g
-          style={{
-            opacity: pose === "catch" ? 1 : 0,
-            transition: "opacity 0.6s ease-out",
-          }}
+        <text
+          x={0}
+          y={28}
+          textAnchor="middle"
+          fontSize={110}
+          fontWeight={900}
+          fill="#7a5a30"
+          opacity={0.7}
+          fontFamily="ui-serif, Georgia, serif"
+          letterSpacing={4}
         >
-          <WheelPizzaBody scores={scores} />
-        </g>
+          PIZZA
+        </text>
+      </g>
 
-        {/* Pizza lid — visible 只在 anticipate (盖子关). Catch 时 fade out
-            reveal pizza. */}
-        <g
-          style={{
-            opacity: pose === "anticipate" ? 1 : 0,
-            transition: "opacity 0.6s ease-out",
-          }}
-        >
+      {/* Catch + React phase: split view — 2 squares side-by-side. Left = lid
+          (PIZZA label), Right = open box w/ pizza wheel (catch only, react
+          hides wheel). 整体缩小 fit 2 squares horizontally. */}
+      <g
+        className="split-view"
+        style={{
+          opacity: pose !== "anticipate" ? 1 : 0,
+          transition: "opacity 0.6s ease-out",
+        }}
+      >
+        {/* Left square: lid representation w/ PIZZA label */}
+        <g transform="translate(-115 -60) scale(0.5 0.55)">
           <rect
-            x={-198}
-            y={-198}
-            width={396}
-            height={396}
-            rx={26}
-            ry={26}
-            fill="#a8804f"
+            x={-200}
+            y={-200}
+            width={400}
+            height={400}
+            rx={28}
+            ry={28}
+            fill="#c89968"
             stroke="#7a5a30"
-            strokeWidth={2}
+            strokeWidth={2.5}
+          />
+          <rect
+            x={-188}
+            y={-188}
+            width={376}
+            height={376}
+            rx={20}
+            ry={20}
+            fill="none"
+            stroke="#9a6f3e"
+            strokeWidth={1.5}
+            opacity={0.6}
           />
           <text
             x={0}
             y={28}
             textAnchor="middle"
-            fontSize={110}
+            fontSize={130}
             fontWeight={900}
             fill="#7a5a30"
-            opacity={0.65}
+            opacity={0.7}
             fontFamily="ui-serif, Georgia, serif"
-            letterSpacing={4}
+            letterSpacing={6}
           >
             PIZZA
           </text>
+        </g>
+
+        {/* Right square: open box w/ pizza wheel (catch shows wheel, react
+            hides wheel for "pizza eaten" effect) */}
+        <g transform="translate(115 -60) scale(0.5 0.55)">
+          <rect
+            x={-200}
+            y={-200}
+            width={400}
+            height={400}
+            rx={28}
+            ry={28}
+            fill="#c89968"
+            stroke="#7a5a30"
+            strokeWidth={2.5}
+          />
+          <rect
+            x={-188}
+            y={-188}
+            width={376}
+            height={376}
+            rx={20}
+            ry={20}
+            fill="none"
+            stroke="#9a6f3e"
+            strokeWidth={1.5}
+            opacity={0.6}
+          />
+          {/* Wheel pizza body inside right box — catch visible, react fade out */}
+          <g
+            style={{
+              opacity: pose === "catch" ? 1 : 0,
+              transition: "opacity 0.6s ease-out",
+            }}
+          >
+            <WheelPizzaBody scores={scores} />
+          </g>
         </g>
       </g>
 
@@ -403,44 +468,47 @@ export function PizzaAdapter(
           飞到对应 animal 手中). 当前 framework verify 阶段不实施. */}
       <g className="pizza-slice-copies" />
 
-      {/* Lineup 3-2-3 — paint order top → middle → bottom (背景到前景) */}
-      {/* 上排 3 (dim 0,1,2 = 河马/兔子/猫): 后方远, perspective 0.8x */}
+      {/* Lineup 3-2-3 — in-line lineup. viewBox h=750 紧凑 container, lineup
+          vertical span 360 单位 (y=200 to 560), 行间距均匀 180. Horizontal
+          ±140 收紧 (从 ±180), 中排 ±70 错位 in between -140/0/140. */}
+      {/* 上排 3 (dim 0,1,2 = 河马/兔子/猫): 后方, perspective 0.85x */}
       <g className="animal-lineup-top">
         {[0, 1, 2].map((dimIdx, colIdx) => (
           <AnimalImage
             key={ANIMALS_BY_DIM[dimIdx].id}
             animal={ANIMALS_BY_DIM[dimIdx]}
             pose={pose}
-            x={-130 + colIdx * 130}
-            y={85}
+            x={-140 + colIdx * 140}
+            y={200}
             score={scores[dimIdx] ?? 0}
-            perspectiveScale={0.8}
+            perspectiveScale={0.85}
           />
         ))}
       </g>
-      {/* 中排 2 (dim 3,4 = 大象/老鼠): pizza box 两侧, perspective 0.9x */}
+      {/* 中排 2 (dim 3,4 = 大象/老鼠): in-line center, x=±70 错位 in between
+          上下 columns (-140/0/140). */}
       <g className="animal-lineup-middle">
         {[3, 4].map((dimIdx, idx) => (
           <AnimalImage
             key={ANIMALS_BY_DIM[dimIdx].id}
             animal={ANIMALS_BY_DIM[dimIdx]}
             pose={pose}
-            x={idx === 0 ? -180 : 180}
-            y={155}
+            x={idx === 0 ? -70 : 70}
+            y={380}
             score={scores[dimIdx] ?? 0}
-            perspectiveScale={0.9}
+            perspectiveScale={0.95}
           />
         ))}
       </g>
-      {/* 下排 3 (dim 5,6,7 = 长颈鹿/小鸟/老虎): 前方近, perspective 1.0x */}
+      {/* 下排 3 (dim 5,6,7 = 长颈鹿/小鸟/老虎): 前方, perspective 1.0x */}
       <g className="animal-lineup-bottom">
         {[5, 6, 7].map((dimIdx, colIdx) => (
           <AnimalImage
             key={ANIMALS_BY_DIM[dimIdx].id}
             animal={ANIMALS_BY_DIM[dimIdx]}
             pose={pose}
-            x={-130 + colIdx * 130}
-            y={240}
+            x={-140 + colIdx * 140}
+            y={560}
             score={scores[dimIdx] ?? 0}
             perspectiveScale={1.0}
           />

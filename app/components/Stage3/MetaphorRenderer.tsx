@@ -26,10 +26,11 @@ interface MetaphorRendererProps {
   onFinish?: () => void;
 }
 
-// page.tsx running mode VBOX_RUN: x=-216 y=-180 w=432 h=420 (MAX_RADIUS 160
-// + VBOX_PAD 20 + VBOX_LABEL_PAD 56 + VBOX_RUN_EXTRA 60). non-car adapter 共享
-// 同 viewBox, MetaphorRenderer 包 svg wrapper, adapter 自己 render group 内容.
-const NON_CAR_VBOX = "-216 -180 432 420";
+// page.tsx running mode VBOX_RUN: x=-216 y=-180 w=432 h=420. non-car metaphor
+// 用 expanded viewBox h=750 给 lineup 紧凑 vertical (mobile container ~590px,
+// iPhone 12 viewport ~70%). lineup 行间距 180, animals BASE 40, horizontal
+// ±140 收紧让 lineup "塞满"容器不显空荡.
+const PIZZA_VBOX = "-216 -180 432 750";
 
 export function MetaphorRenderer({
   scores,
@@ -72,7 +73,7 @@ export function MetaphorRenderer({
       // POOL enable 'pizza' 让 dev server 50% 几率 visit pick → 真机 verify register.
       return (
         <svg
-          viewBox={NON_CAR_VBOX}
+          viewBox={PIZZA_VBOX}
           className="h-auto w-full"
           role="img"
           aria-label="生命之轮"

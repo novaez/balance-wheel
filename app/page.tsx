@@ -2564,11 +2564,16 @@ export default function Home() {
               </details>
             </>
           ) : isRunning ? (
-            <header>
-              <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
-                让它跑一跑
-              </h1>
-            </header>
+            // Phase 3 — non-car metaphor (pizza/cookie/盆栽/篝火) 演出时
+            // "让它跑一跑" H1 让开, 释放 mobile vertical space 给 lineup.
+            // car metaphor 跟 Phase 2 baseline 一致仍显示 H1.
+            pick && pick.metaphor !== "car" ? null : (
+              <header>
+                <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+                  让它跑一跑
+                </h1>
+              </header>
+            )
           ) : isReflect ? (
             <div className="flex flex-col gap-10 pt-2">
               <h1
