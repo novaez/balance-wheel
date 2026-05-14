@@ -278,68 +278,6 @@ function buildDoodleSvgString(variant: DoodleVariant, sizePx: number): string {
   }
 }
 
-// Phase 3 v2 §六 — 卡片 metaphor mini icon (替换原"今日·{metaphor}" 文本 footer).
-// 5 metaphor 各自 simple SVG icon, 跟 doodle 同 layer 视觉 sticker.
-// 位置: 卡片底部 watermark 下方 (替换原 text 位置). 跟 doodle (random corner)
-// 独立 layer.
-function buildMetaphorIconSvg(metaphor: MetaphorName, sizePx: number): string {
-  const ns = 'xmlns="http://www.w3.org/2000/svg"';
-  switch (metaphor) {
-    case "car":
-      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-25 -25 50 50">
-  <g fill="none" stroke="#3a3a3a" stroke-width="2.2" stroke-linecap="round">
-    <circle r="22"/>
-    <circle r="3" fill="#3a3a3a"/>
-    <line x1="0" y1="-3" x2="0" y2="-19"/>
-    <line x1="0" y1="3" x2="0" y2="19"/>
-    <line x1="-3" y1="0" x2="-19" y2="0"/>
-    <line x1="3" y1="0" x2="19" y2="0"/>
-  </g>
-</svg>`;
-    case "pizza":
-      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-25 -25 50 50">
-  <circle r="22" fill="#f5d061" stroke="#b8843e" stroke-width="2"/>
-  <g stroke="#7a5a30" stroke-width="0.7" stroke-linecap="round" opacity="0.55">
-    <line x1="0" y1="0" x2="0" y2="-22"/>
-    <line x1="0" y1="0" x2="15.5" y2="-15.5"/>
-    <line x1="0" y1="0" x2="22" y2="0"/>
-    <line x1="0" y1="0" x2="15.5" y2="15.5"/>
-    <line x1="0" y1="0" x2="0" y2="22"/>
-    <line x1="0" y1="0" x2="-15.5" y2="15.5"/>
-    <line x1="0" y1="0" x2="-22" y2="0"/>
-    <line x1="0" y1="0" x2="-15.5" y2="-15.5"/>
-  </g>
-  <circle cx="-9" cy="-5" r="3" fill="#b91c1c"/>
-  <circle cx="7" cy="-10" r="2.5" fill="#b91c1c"/>
-  <circle cx="-3" cy="8" r="2.6" fill="#b91c1c"/>
-  <circle cx="10" cy="6" r="2.4" fill="#b91c1c"/>
-</svg>`;
-    case "cookie":
-      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-25 -25 50 50">
-  <circle r="22" fill="#c08c4a" stroke="#7a5a30" stroke-width="2"/>
-  <circle cx="-8" cy="-7" r="2.5" fill="#3d2614"/>
-  <circle cx="9" cy="-3" r="2.5" fill="#3d2614"/>
-  <circle cx="-3" cy="6" r="2.5" fill="#3d2614"/>
-  <circle cx="8" cy="10" r="2.3" fill="#3d2614"/>
-  <path d="M22,-6 Q15,0 22,6 Z" fill="#fffdf8" stroke="#7a5a30" stroke-width="1.5"/>
-</svg>`;
-    case "pot-plants":
-      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-25 -25 50 50">
-  <path d="M-15,6 L-12,22 L12,22 L15,6 Z" fill="#a67d4d" stroke="#7a5a30" stroke-width="1.6"/>
-  <ellipse cx="-8" cy="-2" rx="6" ry="11" fill="#10b981" stroke="#0a7f5a" stroke-width="1" transform="rotate(-25 -8 -2)"/>
-  <ellipse cx="8" cy="-4" rx="6" ry="11" fill="#10b981" stroke="#0a7f5a" stroke-width="1" transform="rotate(25 8 -4)"/>
-  <ellipse cx="0" cy="-11" rx="5" ry="10" fill="#10b981" stroke="#0a7f5a" stroke-width="1"/>
-</svg>`;
-    case "campfires":
-      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-25 -25 50 50">
-  <line x1="-15" y1="16" x2="15" y2="16" stroke="#7a5a30" stroke-width="5" stroke-linecap="round"/>
-  <line x1="-12" y1="20" x2="12" y2="20" stroke="#6b3e1a" stroke-width="4" stroke-linecap="round"/>
-  <path d="M0,-16 Q-9,-6 -6,5 Q-3,11 0,13 Q3,11 6,5 Q9,-6 0,-16 Z" fill="#f97316" stroke="#c45f0a" stroke-width="1.4"/>
-  <path d="M0,-9 Q-4,-2 -2,6 Q2,6 4,-2 Q4,-5 0,-9 Z" fill="#f5d061"/>
-</svg>`;
-  }
-}
-
 const COMMITMENT_PLACEHOLDERS = [
   "今天做：先不做",                   // anti-commitment 摆烂诚实
   "这周给自己一个晚上不开手机",       // 自我关怀具体 ritual
@@ -924,11 +862,8 @@ async function renderCardToPng(opts: {
   doodleVariant: DoodleVariant;
   doodlePosIdx: number;
   doodleRotation: number;
-  // Phase 3 v2 §六 — Stage 6 卡片 metaphor mini icon (替换原文本 footer).
-  // null = pick 没 ready (pre-mount or hard-reload edge case), skip icon.
-  metaphor: MetaphorName | null;
 }): Promise<Blob> {
-  const { presenceText, commitmentText, signOffDate, scores, doodleVariant, doodlePosIdx, doodleRotation, metaphor } = opts;
+  const { presenceText, commitmentText, signOffDate, scores, doodleVariant, doodlePosIdx, doodleRotation } = opts;
 
   // 等 webfont 加载——这步是 PNG 用 webfont 不 fallback 的关键 (跟旧版 B' 不同,
   // 旧版在 isolated origin 拿不到 webfont, 必须 fallback 到 system 楷体)。
@@ -1029,33 +964,6 @@ async function renderCardToPng(opts: {
     ctx.font = '28px "Caveat", cursive';
     ctx.fillStyle = "#a1a1aa";
     ctx.fillText("wheel of life", PNG_WIDTH / 2, PNG_HEIGHT - 70);
-
-    // Phase 3 v2 §六 — 卡片 metaphor mini icon (替换原"今日·{metaphor}" 文本).
-    // 位置: watermark 下方 ~5px, size 90px PNG (2.5x DOM 36px), centered.
-    // Render SVG → image → drawImage (跟 doodle 同 pattern).
-    if (metaphor) {
-      const iconPngSize = 90;
-      const iconSvg = buildMetaphorIconSvg(metaphor, iconPngSize);
-      const iconBlob = new Blob([iconSvg], {
-        type: "image/svg+xml;charset=utf-8",
-      });
-      const iconUrl = URL.createObjectURL(iconBlob);
-      try {
-        const iconImg = await new Promise<HTMLImageElement>(
-          (resolve, reject) => {
-            const im = new Image();
-            im.onload = () => resolve(im);
-            im.onerror = (e) => reject(e);
-            im.src = iconUrl;
-          },
-        );
-        const iconX = (PNG_WIDTH - iconPngSize) / 2;
-        const iconY = PNG_HEIGHT - 60; // 30px below watermark (which 是 PNG_HEIGHT - 70)
-        ctx.drawImage(iconImg, iconX, iconY, iconPngSize, iconPngSize);
-      } finally {
-        URL.revokeObjectURL(iconUrl);
-      }
-    }
 
     // Phase 2 Sub-task 2 — doodle drawn last (overlay over wheel/text), at
     // random margin position with random tilt. PNG sizes 倍数 ~2.5x DOM (PNG
@@ -1521,8 +1429,6 @@ export default function Home() {
         doodleVariant: selectedDoodle,
         doodlePosIdx: selectedDoodlePosIdx,
         doodleRotation: selectedDoodleRotation,
-        // Phase 3 v2 §六 — Stage 6 卡片 metaphor mini icon (替换原文本 footer)
-        metaphor: pick ? pick.metaphor : null,
       });
       const dateYmd = formatDateYMD(presence.at);
       const filename = `wheel-of-life-${dateYmd}.png`;
@@ -1785,21 +1691,12 @@ export default function Home() {
   // Phase 3c — terrain enrichment (design §六). 替换 Phase 2 的 bump/pit 二
   // 元 obstacles 为 6 种 terrain element: pit (沟) / slope-up / slope-down /
   // sand (沙地) / snow (雪地) / rock (石块, Phase 2 bump 复用) / grass (装饰).
-  // 4-6 elements per run distance 1200px, mulberry32 per runId 同 run 内稳定.
-  // 各 element 独立 height + radius + length, ground curve deviation 根据
-  // type 分发不同 shape (rock = bell up, pit = bell down, slope = half-bell,
-  // sand = ripple, snow = shallow dip, grass = visual only).
-  // Phase 3 polish — 加 "flower" + "cactus" (chrome dinosaur vibe) terrain types.
-  type TerrainElementType =
-    | "rock" // 石块 (凸起, Phase 2 bump 复用)
-    | "pit" // 沟 (下沉)
-    | "slope-up" // 上坡
-    | "slope-down" // 下坡
-    | "sand" // 沙地 (浅 ripple)
-    | "snow" // 雪地 (浅凹)
-    | "cactus" // 仙人掌 (physics like rock 凸, visual chrome dinosaur)
-    | "grass" // 草丛 (装饰, 不改 ground)
-    | "flower"; // 小花 (装饰, 不改 ground)
+  // Stage 3 chrome dino panorama — 终态只 3 种 terrain type:
+  //   rock (凸 bump, ground curve up), pit (凹 dip, ground curve down),
+  //   cactus (chrome dino silhouette + 小幅 bump). 历史上有过 slope-up /
+  //   slope-down / sand / snow / grass / flower, 都在 Phase 3 panorama 重构
+  //   时清掉 (chrome dino 风只需 cactus + ground 凸凹).
+  type TerrainElementType = "rock" | "pit" | "cactus";
   type TerrainElement = {
     atProgress: number;
     type: TerrainElementType;
@@ -1883,28 +1780,10 @@ export default function Home() {
         case "pit":
           dy += o.height * bell;
           break;
-        case "slope-up":
-          dy += -o.height * bell * 0.7;
-          break;
-        case "slope-down":
-          dy += o.height * bell * 0.55;
-          break;
-        case "sand":
-          // 浅 ripple — small noise on top of subtle dip
-          dy += (Math.sin(dx * 0.4) * 2 + 1) * bell;
-          break;
-        case "snow":
-          dy += o.height * bell * 0.6;
-          break;
         case "cactus":
-          // 仙人掌 visual height (60-84) 跟 physics bump 解耦: 视觉大 silhouette,
-          // 物理只小幅 bump (12), 像 dino 那样 wheel 经过 cactus 是"擦过"
-          // 而不是"翻过 60px 障碍". 真要"跳过去"需要 jump 机制 (我们没有).
+          // visual height (80-109) 跟 physics bump 解耦: 视觉大 silhouette,
+          // 物理只 12 单位小 bump (wheel 经过 cactus 是"擦过", 不是"翻 80px").
           dy += -12 * bell;
-          break;
-        case "grass":
-        case "flower":
-          // 装饰 only, 不改 ground curve
           break;
       }
     }
@@ -2126,21 +2005,6 @@ export default function Home() {
                 wheel of life
               </p>
 
-              {/* Phase 3 v2 §六 — 卡片 metaphor mini icon (替换原"今日·{metaphor}"
-                  文本 footer, 跨 5 metaphor 视觉 sticker). 跟 doodle 独立 layer,
-                  位置 watermark 下方. liushu polish: text "今日 · pizza" 看着奇怪,
-                  换成 mini icon. SVG via data-URI <img> (trusted content). */}
-              {pick && (
-                <div className="flex justify-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`data:image/svg+xml;utf8,${encodeURIComponent(buildMetaphorIconSvg(pick.metaphor, 36))}`}
-                    width={36}
-                    height={36}
-                    alt=""
-                  />
-                </div>
-              )}
             </div>
           </article>
 
@@ -2514,84 +2378,6 @@ export default function Home() {
                       </g>
                     )}
                 </g>
-                {/* 独轮车 rider — 真 unicycle 几何 (参 liushu 给的实拍图).
-
-                    !!! Path C 测试 暂禁用 (false && ...) !!!
-                    Doodle stick figure register 在 130px 主角尺寸下视觉密度撑
-                    不起来, 4 轮 patch 后 liushu 仍判 "怪". 进 Path C 测试看
-                    wheel-only 基线; 同时 Path A (Quentin Blake / 绘本 PNG)
-                    走 vault prompt → ChatGPT generate → swap image. 整段
-                    doodle SVG 暂保留作 fallback / 历史参考, 不删.
-
-                    [关键几何文档保留]
-                    - NO handlebar (真 unicycle 没把手, 双臂 free balance)
-                    - 长 seat post 从 hub 撑上去 (~220 单位), saddle 高坐
-                    - rider upright 直立姿态 + 一只手臂打开 balance
-                    - 双 crank + 双 pedal 跨 hub 两侧 (4 + 10 o'clock 反向)
-                    - 一只脚踩前 pedal 显腿, 另一脚 hidden 在反向 pedal
-
-                    Mixed perspective: wheel face-on (8 sector) + rider profile
-                    (朝右). seat post / 腿 / pedal 在 rider group 不随 wheel
-                    旋转 (cartoon convention). */}
-                {false && isRunning && (
-                  <g
-                    fill="none"
-                    stroke="#52525b"
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    {/* === unicycle 机械结构 === */}
-
-                    {/* hub 中心 marker */}
-                    <circle cx={0} cy={0} r={3.5} fill="#52525b" stroke="none" />
-
-                    {/* seat post: hub 长杆撑到 saddle (穿 wheel face 凸出顶) */}
-                    <line x1={0} y1={0} x2={0} y2={-220} strokeWidth={3} />
-
-                    {/* 鞍座 saddle (横扁 ellipse) */}
-                    <ellipse cx={0} cy={-225} rx={20} ry={5} fill="#52525b" stroke="none" />
-
-                    {/* 后 crank arm + pedal (10 o'clock 反向位, 显双 pedal 几何) */}
-                    <path d="M 0 0 L -50 -30" strokeWidth={2.5} />
-                    <ellipse cx={-50} cy={-32} rx={9} ry={3.5} fill="#52525b" stroke="none" />
-
-                    {/* === rider torso === */}
-
-                    {/* 身体 body upright (微前倾, 真 unicycle 直立姿态) */}
-                    <path d="M 0 -228 Q 1 -260 2 -300" strokeWidth={2.5} />
-
-                    {/* 一只手臂前伸 / balance (单臂可见, 远臂 hidden in profile) */}
-                    <path d="M 2 -290 Q 14 -278 26 -270" strokeWidth={2} />
-                    <circle cx={26} cy={-270} r={3.5} fill="#fef3c7" />
-
-                    {/* === head profile facing right === */}
-
-                    <circle cx={6} cy={-318} r={15} fill="#fef3c7" />
-                    <circle cx={13} cy={-318} r={2.5} fill="#52525b" stroke="none" />
-                    <path d="M 21 -320 Q 24 -317 21 -314" strokeWidth={1.3} />
-                    <path d="M 13 -310 Q 17 -308 20 -310" strokeWidth={1.3} />
-
-                    {/* 头发 spiky hair tufts (Calvin 风) */}
-                    <path d="M -7 -325 L -10 -333" strokeWidth={1.5} />
-                    <path d="M -1 -331 L -3 -340" strokeWidth={1.5} />
-                    <path d="M 5 -333 L 5 -343" strokeWidth={1.5} />
-                    <path d="M 11 -331 L 13 -340" strokeWidth={1.5} />
-
-                    {/* === 单腿 + 前 pedal (rendered last 让脚踩最上层) === */}
-
-                    {/* 大腿 thigh: hip 前送 down 到膝盖 (远端 forward + below wheel top) */}
-                    <path d="M 1 -228 Q 28 -160 50 -100" strokeWidth={2.5} />
-
-                    {/* 小腿 shin: 膝盖回收 down 到前 pedal 位置 */}
-                    <path d="M 50 -100 Q 60 -50 50 28" strokeWidth={2.5} />
-
-                    {/* 前 crank arm (4 o'clock) + pedal + 鞋 (鞋在 pedal 上) */}
-                    <path d="M 0 0 L 50 30" strokeWidth={2.5} />
-                    <ellipse cx={50} cy={32} rx={9} ry={3.5} fill="#52525b" stroke="none" />
-                    <ellipse cx={50} cy={26} rx={10} ry={3.5} fill="#52525b" stroke="none" />
-                  </g>
-                )}
                 </g>
               </g>
               </g>
@@ -2625,33 +2411,13 @@ export default function Home() {
                 });
                 return (
                   <g>
-                    {/* Phase 3c — terrain visual decorations (grass/sand/snow) */}
+                    {/* Stage 3 — terrain visual decoration (cactus only).
+                        rock + pit 没 explicit visual, 只通过 ground curve
+                        deviation 显形. */}
                     {obstaclesData.map((o, idx) => {
                       const x = o.atProgress - groundProgressAbs;
                       if (x < groundX0 - 50 || x > groundXEnd + 50) return null;
                       const y = groundCurveY(x);
-                      if (o.type === "grass") {
-                        // 草丛 — 拉大 (liushu 再大很多)
-                        return (
-                          <g key={`terrain-${idx}`}>
-                            {Array.from({ length: 8 }, (_, i) => {
-                              const gx = x + (i - 3.5) * 9;
-                              return (
-                                <line
-                                  key={`gr-${i}`}
-                                  x1={gx}
-                                  y1={y}
-                                  x2={gx + (i % 2 === 0 ? 3 : -3)}
-                                  y2={y - 20 - (i % 3) * 2}
-                                  stroke="#65a30d"
-                                  strokeWidth={2.8}
-                                  strokeLinecap="round"
-                                />
-                              );
-                            })}
-                          </g>
-                        );
-                      }
                       if (o.type === "cactus") {
                         // 仙人掌 — chrome dinosaur 大 silhouette (80-109 height
                         // from new distribution, 大一号). pillar + 2 L arms.
@@ -2689,106 +2455,6 @@ export default function Home() {
                               stroke="#1a2e05"
                               strokeWidth={1.2}
                             />
-                          </g>
-                        );
-                      }
-                      if (o.type === "sand") {
-                        // 沙地 — 浅黄色 patch + 点状颗粒
-                        return (
-                          <g key={`terrain-${idx}`}>
-                            <ellipse
-                              cx={x}
-                              cy={y + 1}
-                              rx={o.radius}
-                              ry={3}
-                              fill="#fde68a"
-                              opacity={0.5}
-                            />
-                            {Array.from({ length: 6 }, (_, i) => (
-                              <circle
-                                key={`sd-${i}`}
-                                cx={x + (i - 2.5) * o.radius * 0.3}
-                                cy={y + 2 + (i % 2)}
-                                r={0.8}
-                                fill="#92400e"
-                                opacity={0.6}
-                              />
-                            ))}
-                          </g>
-                        );
-                      }
-                      if (o.type === "snow") {
-                        // 雪地 — 白色浅 patch
-                        return (
-                          <g key={`terrain-${idx}`}>
-                            <ellipse
-                              cx={x}
-                              cy={y + 1}
-                              rx={o.radius}
-                              ry={4}
-                              fill="#f8fafc"
-                              stroke="#cbd5e1"
-                              strokeWidth={0.6}
-                              opacity={0.85}
-                            />
-                          </g>
-                        );
-                      }
-                      if (o.type === "flower") {
-                        // 小花 — 2 朵 (花瓣 r=6 + 中心 r=3.5 + stem). 拉大很多 (liushu)
-                        const flowerCount = 2 + (idx % 2);
-                        const palette = ["#ec4899", "#f59e0b", "#a855f7", "#ef4444"];
-                        const seedHue = (idx * 37) % palette.length;
-                        return (
-                          <g key={`terrain-${idx}`}>
-                            {Array.from({ length: flowerCount }, (_, i) => {
-                              const fx = x + (i - (flowerCount - 1) / 2) * 32;
-                              const fy = y - 16;
-                              const petalColor = palette[(seedHue + i) % palette.length];
-                              return (
-                                <g key={`fl-${i}`}>
-                                  {/* stem */}
-                                  <line
-                                    x1={fx}
-                                    y1={y}
-                                    x2={fx}
-                                    y2={fy + 4}
-                                    stroke="#65a30d"
-                                    strokeWidth={2.5}
-                                    strokeLinecap="round"
-                                  />
-                                  {/* leaf on stem */}
-                                  <ellipse
-                                    cx={fx + (i % 2 === 0 ? 5 : -5)}
-                                    cy={fy + 9}
-                                    rx={5}
-                                    ry={2.5}
-                                    fill="#65a30d"
-                                    transform={`rotate(${i % 2 === 0 ? 30 : -30} ${fx + (i % 2 === 0 ? 5 : -5)} ${fy + 9})`}
-                                  />
-                                  {/* 7 petals around center (full sunflower) */}
-                                  {[0, 1, 2, 3, 4, 5, 6].map((p) => {
-                                    const a = (p * 2 * Math.PI) / 7 - Math.PI / 2;
-                                    return (
-                                      <ellipse
-                                        key={p}
-                                        cx={fx + Math.cos(a) * 6.5}
-                                        cy={fy + Math.sin(a) * 6.5}
-                                        rx={6}
-                                        ry={4}
-                                        fill={petalColor}
-                                        stroke="#7f1d4a"
-                                        strokeWidth={0.5}
-                                        opacity={0.95}
-                                        transform={`rotate(${(a * 180) / Math.PI + 90} ${fx + Math.cos(a) * 6.5} ${fy + Math.sin(a) * 6.5})`}
-                                      />
-                                    );
-                                  })}
-                                  {/* center */}
-                                  <circle cx={fx} cy={fy} r={3.5} fill="#fbbf24" stroke="#a16207" strokeWidth={0.7} />
-                                </g>
-                              );
-                            })}
                           </g>
                         );
                       }
