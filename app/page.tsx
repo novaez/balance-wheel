@@ -701,20 +701,30 @@ function computeBob(rotation: number, scores: Scores): number {
       if (sectorMaxY > maxY) maxY = sectorMaxY;
     }
   }
-  // Phase 3 polish — bob amplitude × 1.5 (从 2.0, liushu "颠簸过大"调回).
-  return (MAX_RADIUS - maxY) * 1.5;
+  // Phase 3 polish — bob 物理 correct × 1: wheel 底永远贴地, center 自动随
+  // sector 高低 oscillate (低 score 颠 / 高 score 平), 这才是"不圆"的天然
+  // 视觉显形. Amplification (×1.5/×3) 会让 wheel 沉入地下 (圆心贴地), 反而
+  // 看不到弹跳是 wheel 不圆造成的.
+  // 历史: 2.0 → "颠簸过大" → 1.5 → 3 (沉地下) → 1 (物理 correct).
+  return MAX_RADIUS - maxY;
 }
 
-// One trip: 2 full turns over 5s, ease-in-out so the ride starts gently,
-// peaks in the middle, and glides to a stop. Final orientation matches start.
+// One trip: 5 full turns over 5s (= 360°/s, liushu "时长减到 2/3").
+// 时长 7s → 5s (~2/3), 圈数 7 → 5 (速度保持 360°/s). Total ground = 1800*1.8
+// = 3240 单位 (terrain 范围相应收到 3000 以避免后段空白). linear 匀速.
 const RUN_DURATION_MS = 5000;
-const RUN_TOTAL_ROTATION_DEG = 720;
+const RUN_TOTAL_ROTATION_DEG = 1800;
 const GROUND_PER_DEG = 1.8;
 
+// Phase 3 polish — easing 从 easeInOut 改 linear (constant speed).
+// liushu "一开始很慢, 越滚越快" = ease-in 慢启动是 perceived 起步问题.
+// linear 让 wheel 全程匀速 (chrome dino 真款也是 constant speed). 名字保留
+// 不改避免 call site 改, body 直接 return x.
 function easeInOutQuad(x: number): number {
-  return x < 0.5 ? 2 * x * x : 1 - 2 * (1 - x) * (1 - x);
+  return x;
+  // 旧 easeInOut 代码 (留作参考):
+  // return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
 }
-
 // Eval-mode viewBox is the original square; post-eval modes extend downward
 // for the ground line + bob excursion, and outward horizontally to make room
 // for the 8 dimension labels that orbit the wheel.
@@ -732,15 +742,16 @@ const VBOX_EVAL = {
   w: (MAX_RADIUS + VBOX_LABEL_PAD) * 2,
   h: (MAX_RADIUS + VBOX_PAD) * 2,
 };
-// Phase 3 polish — 车 metaphor viewBox (镜头退后 + 独轮车 rider 上方空间):
-//   y top -220 → -300 → -380 (再加 80 单位上方空间给 长 seat post + 高坐 rider)
-//   y top bump 同时让 wheel 在视口里相对小, 跟真 unicycle 几何 (轮小 + rider 高坐) 对应
-//   w 不变 (1050), h 跟着 +80 → 900
+// Phase 3 polish — 车 metaphor viewBox (镜头推进 + 屏幕变窄).
+//   liushu "整体大一号 + 屏幕变窄": w 1400 → 1100 (-21%), h 820 → 720 (-12%),
+//   aspect 1.71 → 1.53 (less wide). 内容比例不变但 viewBox 变小 = 显示更大
+//   ("镜头推进"). y -300 → -280 (微调 sky), x -700 → -625 (wheel 仍在
+//   ~16% from left).
 const VBOX_RUN = {
-  x: -525,
-  y: -380,
-  w: 1050,
-  h: 900,
+  x: -625,
+  y: -280,
+  w: 1100,
+  h: 720,
 };
 
 type Mode = "eval" | "running" | "reflect" | "presence" | "done";
@@ -1138,6 +1149,8 @@ export default function Home() {
     // Client-only: mount 后 set, 避免 SSG prerender / hydrate mismatch.
     setPick(selectMetaphorForVisit());
   }, []);
+  // PNG 预热改用 DOM-attached hidden <img> (见 render JSX 顶部) — 更可靠,
+  // 不靠 .decode() promise & detached Image GC 风险.
   // Phase 2 — placeholder pool: lazy init mount 时 random pick; useEffect 监听
   // mode 进入 "presence" 时 re-pick (cover "回去调整车轮再回来" case, SPA 不重
   // mount 但 mode reset → presence 流程会 re-pick).
@@ -1749,9 +1762,9 @@ export default function Home() {
   const isReflect = mode === "reflect";
   const isPresence = mode === "presence";
   const isDone = mode === "done";
-  // Keep the extended viewBox + ground line through everything past eval so
-  // the wheel rests on the same ground it just rolled across — no layout snap.
-  const showGround = !isEval;
+  // 仅 running 阶段显地面 + 大画幅; reflect/presence/done 回 eval 视图,
+  // 让 wheel render 跟 Stage 1 一致 (无地面 + 原始大小).
+  const showGround = isRunning;
   const vbox = showGround ? VBOX_RUN : VBOX_EVAL;
   const rotation = isRunning ? progress * RUN_TOTAL_ROTATION_DEG : 0;
   // In reflect/presence/done, rotation is 0 (= 720 mod 360, same final
@@ -1795,61 +1808,63 @@ export default function Home() {
   };
   const obstaclesData = useMemo<TerrainElement[]>(() => {
     const rng = mulberry32(hashSeed(runId, 0xb04d));
-    const used: number[] = [];
-    // Phase 3 polish — target 6-9 → 10-14 (liushu "装饰多一点 chrome 恐龙感").
-    const target = 10 + Math.floor(rng() * 5); // 10-14 elements
+    // Phase 3 polish — chrome dino 风 cactus encounter pattern: 整段 wheel
+    // 旅程只 3 次 cactus 出现, sizes [1, 3, 2] (1 单 + 3 一簇 + 2 一簇).
+    // Group 位置在 ground 距离 [600-900, 1500-1800, 2400-2700], 每组内
+    // intra-spacing 38 让 cluster 紧凑. rock + pit 分散 scattered.
     const items: TerrainElement[] = [];
-    let attempts = 0;
-    while (items.length < target && attempts < 100) {
-      attempts++;
-      const at = 200 + Math.floor(rng() * 1400);
-      // Phase 3 polish — min spacing 130 → 95 (装饰更密)
-      if (used.some((p) => Math.abs(p - at) < 95)) continue;
-      used.push(at);
-      // Phase 3 polish — 坡/坑/草/花/仙人掌 dimensions 拉大 + 装饰 40%.
-      const roll = rng();
-      let type: TerrainElementType;
-      let radius: number;
-      let height: number;
-      if (roll < 0.15) {
-        type = "rock";
-        radius = 16 + Math.floor(rng() * 8); // 16-23
-        height = 10 + Math.floor(rng() * 6); // 10-15
-      } else if (roll < 0.30) {
-        type = "pit";
-        radius = 35 + Math.floor(rng() * 18); // 35-52 (拉大 1.5x)
-        height = 16 + Math.floor(rng() * 8); // 16-23 (拉大)
-      } else if (roll < 0.38) {
-        type = "slope-up";
-        radius = 50 + Math.floor(rng() * 35); // 50-84 (拉大)
-        height = 16 + Math.floor(rng() * 8);
-      } else if (roll < 0.46) {
-        type = "slope-down";
-        radius = 50 + Math.floor(rng() * 35);
-        height = 13 + Math.floor(rng() * 6);
-      } else if (roll < 0.54) {
-        type = "sand";
-        radius = 50 + Math.floor(rng() * 40);
-        height = 3;
-      } else if (roll < 0.60) {
-        type = "snow";
-        radius = 60 + Math.floor(rng() * 60);
-        height = 5;
-      } else if (roll < 0.70) {
-        type = "cactus";
-        radius = 8 + Math.floor(rng() * 4); // 8-11 (cactus 物理 bump radius 窄)
-        height = 9 + Math.floor(rng() * 5); // 9-13
-      } else if (roll < 0.86) {
-        type = "grass";
-        radius = 30 + Math.floor(rng() * 25); // 30-54 (草丛拉大)
-        height = 6;
-      } else {
-        type = "flower";
-        radius = 25 + Math.floor(rng() * 18); // 25-42 (花拉大)
-        height = 8;
+
+    // === Cactus: 3 encounters with varied cluster sizes ===
+    const groupSizes = [1, 3, 2]; // 1 单, 1 簇 of 3, 1 簇 of 2
+    const groupCenters = [
+      600 + Math.floor(rng() * 300),  // 600-900
+      1500 + Math.floor(rng() * 300), // 1500-1800
+      2400 + Math.floor(rng() * 300), // 2400-2700
+    ];
+    const intraSpacing = 38;
+    groupSizes.forEach((size, gi) => {
+      const baseAt = groupCenters[gi];
+      for (let i = 0; i < size; i++) {
+        items.push({
+          atProgress: baseAt + i * intraSpacing,
+          type: "cactus",
+          radius: 16 + Math.floor(rng() * 6), // 16-21 physics bump radius
+          height: 80 + Math.floor(rng() * 30), // 80-109 visual silhouette
+        });
       }
-      items.push({ atProgress: at, type, radius, height });
+    });
+
+    // === Rock + pit: 4-6 scattered, 避开 cactus group 200 单位 ===
+    const cactusPositions = items.map((c) => c.atProgress);
+    const bumpUsed: number[] = [];
+    const bumpTarget = 4 + Math.floor(rng() * 3); // 4-6
+    let attempts = 0;
+    while (bumpUsed.length < bumpTarget && attempts < 150) {
+      attempts++;
+      const at = 200 + Math.floor(rng() * 2900);
+      const tooCloseCactus = cactusPositions.some(
+        (p) => Math.abs(p - at) < 200
+      );
+      const tooCloseBump = bumpUsed.some((p) => Math.abs(p - at) < 250);
+      if (tooCloseCactus || tooCloseBump) continue;
+      bumpUsed.push(at);
+      if (rng() < 0.5) {
+        items.push({
+          atProgress: at,
+          type: "rock",
+          radius: 70 + Math.floor(rng() * 50),
+          height: 38 + Math.floor(rng() * 18),
+        });
+      } else {
+        items.push({
+          atProgress: at,
+          type: "pit",
+          radius: 110 + Math.floor(rng() * 60),
+          height: 55 + Math.floor(rng() * 22),
+        });
+      }
     }
+
     items.sort((a, b) => a.atProgress - b.atProgress);
     return items;
   }, [runId]);
@@ -1882,8 +1897,10 @@ export default function Home() {
           dy += o.height * bell * 0.6;
           break;
         case "cactus":
-          // physics like rock — 越 cactus wheel 上凸 bump
-          dy += -o.height * bell;
+          // 仙人掌 visual height (60-84) 跟 physics bump 解耦: 视觉大 silhouette,
+          // 物理只小幅 bump (12), 像 dino 那样 wheel 经过 cactus 是"擦过"
+          // 而不是"翻过 60px 障碍". 真要"跳过去"需要 jump 机制 (我们没有).
+          dy += -12 * bell;
           break;
         case "grass":
         case "flower":
@@ -1895,7 +1912,11 @@ export default function Home() {
   };
   // Phase 3 polish — obstacleBob × 2.5 (从 4.5, liushu "颠簸过大"调回).
   // 越障仍 visible 但不再 dramatic 过头.
-  const obstacleBob = showGround ? groundCurveDeviation(0) * 2.5 : 0;
+  // Phase 3 polish — sample x at -450 (wheel 实际位置) + multiplier × 2
+  // (liushu "往回拽一点": × 4 太夸张 wheel 沉地下太多, × 2 跟新 height
+  // (rock 38-55 / pit 55-76) 配合 wheel sink/rise 47-95% 自身 radius,
+  // 戏剧但 wheel 仍可见).
+  const obstacleBob = showGround ? groundCurveDeviation(-450) * 2 : 0;
 
   // Phase 3c — slope micro tilt ±2°. wheel 不变形 boundary 守 (design §六:
   // 禁 squash/stretch/spring, 仅允许 micro tilt 反映 self 适应 environment 的
@@ -2172,6 +2193,35 @@ export default function Home() {
 
   return (
     <div className="min-h-screen w-full bg-[var(--page-bg)] text-zinc-900 font-sans">
+      {/* Pizza PNG 预热 — DOM-attached hidden <img>, 保 decoded bitmap warm.
+          SVG <image> 同 URL render 时 browser 直接复用现成 raster, 无 decode 延迟. */}
+      {pick?.metaphor === "pizza" && (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            width: 0,
+            height: 0,
+            overflow: "hidden",
+            pointerEvents: "none",
+          }}
+        >
+          {(["hippo", "rabbit", "cat", "elephant", "mouse", "giraffe", "bird", "tiger"] as const).flatMap(
+            (id) =>
+              (["anticipate", "catch", "react"] as const).map((p) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={`preload-${id}-${p}`}
+                  src={`/assets/pizza/pizza-${id}-${p}.webp`}
+                  alt=""
+                  decoding="async"
+                  loading="eager"
+                  fetchPriority="high"
+                />
+              )),
+          )}
+        </div>
+      )}
       <main className="mx-auto flex max-w-6xl flex-col gap-10 px-6 pb-6 pt-[calc(env(safe-area-inset-top)+0.5rem)] md:flex-row md:items-start md:gap-12 md:py-16 md:pt-16">
         {/* Left: wheel */}
         <section
@@ -2233,7 +2283,10 @@ export default function Home() {
                   share the bob translate so they sink with the wheel; both
                   stay outside the rotate group so running doesn't spin them. */}
               <g transform={`translate(0 ${(bob + obstacleBob).toFixed(3)})`}>
-                {outlineCircle()}
+                {/* outline + labels 仅 eval/reflect 显示 (running mode wheel
+                    缩 0.55 在 scale wrap 内, 这俩在外层会比例失调; 而且
+                    running narrative 不再是"对比满分", 是"看 wheel 怎么颠"). */}
+                {!isRunning && outlineCircle()}
                 {!isRunning &&
                   DIMENSIONS.map((dim, i) => {
                     const angle = -90 + i * SECTOR_DEG + SECTOR_DEG / 2;
@@ -2263,6 +2316,40 @@ export default function Home() {
                   })}
               </g>
 
+              {/* Phase 3 polish — sky clouds 稀疏 silhouette (chrome dino vibe).
+                  2 朵 (从 4 朵减), 远侧 + 大间距, register 跟 DoodleCloud
+                  (line 148) 同源. 仅 running mode (eval/reflect viewBox 不同). */}
+              {isRunning && (
+                <g pointerEvents="none">
+                  <g transform="translate(-450 -230)">
+                    <path
+                      d="M -18 4 Q -22 -3 -14 -5 Q -8 -10 0 -7 Q 8 -10 14 -5 Q 22 -3 18 4 L 14 5 L -14 5 Z"
+                      fill="white"
+                      stroke="#52525b"
+                      strokeWidth={1.5}
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                    />
+                  </g>
+                  <g transform="translate(420 -250) scale(1.1)">
+                    <path
+                      d="M -18 4 Q -22 -3 -14 -5 Q -8 -10 0 -7 Q 8 -10 14 -5 Q 22 -3 18 4 L 14 5 L -14 5 Z"
+                      fill="white"
+                      stroke="#52525b"
+                      strokeWidth={1.5}
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                    />
+                  </g>
+                </g>
+              )}
+
+              {/* Phase 3 polish — wheel scale wrap (running mode only).
+                  scale(0.7) + translate(-450 54): wheel ~224px 直径 + 视口左
+                  侧 (chrome dino 角色定位), 仍坐 ground line (y=166).
+                  eval/reflect 模式 wheel 保持原 size (transform undefined).
+                  (motion lines + dust 之前 4+4 装饰 liushu "像几行小字" 已删) */}
+              <g transform={isRunning ? "translate(-450 54) scale(0.7)" : undefined}>
               <g transform={`translate(0 ${(bob + obstacleBob).toFixed(3)})`}>
                 {/* Phase 3c — slope micro tilt 包在 rotate 外 (rotate 是 wheel
                     自身角度, tilt 是车身相对 ground 的姿态, 两者独立). */}
@@ -2428,20 +2515,25 @@ export default function Home() {
                     )}
                 </g>
                 {/* 独轮车 rider — 真 unicycle 几何 (参 liushu 给的实拍图).
-                    跟 bob + slopeTilt 一起动 (在该 group 内), 不跟 wheel rotation
-                    (在 rotation group 外). Only visible 在 Stage 3 running mode.
 
-                    关键几何 (跟 bicycle 区别):
-                    - **NO handlebar** — 真 unicycle 没把手, 双臂 free balance
-                    - **长 seat post** 从 hub 撑上去 (~220 单位), saddle 高坐
-                    - rider **upright** 直立姿态 + 一只手臂打开 balance
-                    - 双 crank + 双 pedal 跨 hub 两侧 (4 o'clock + 10 o'clock 反向)
+                    !!! Path C 测试 暂禁用 (false && ...) !!!
+                    Doodle stick figure register 在 130px 主角尺寸下视觉密度撑
+                    不起来, 4 轮 patch 后 liushu 仍判 "怪". 进 Path C 测试看
+                    wheel-only 基线; 同时 Path A (Quentin Blake / 绘本 PNG)
+                    走 vault prompt → ChatGPT generate → swap image. 整段
+                    doodle SVG 暂保留作 fallback / 历史参考, 不删.
+
+                    [关键几何文档保留]
+                    - NO handlebar (真 unicycle 没把手, 双臂 free balance)
+                    - 长 seat post 从 hub 撑上去 (~220 单位), saddle 高坐
+                    - rider upright 直立姿态 + 一只手臂打开 balance
+                    - 双 crank + 双 pedal 跨 hub 两侧 (4 + 10 o'clock 反向)
                     - 一只脚踩前 pedal 显腿, 另一脚 hidden 在反向 pedal
 
-                    Mixed perspective convention: wheel face-on (8 sector) +
-                    rider profile (朝右 = 前进方向). seat post / 腿 / pedal
-                    在 rider group 不随 wheel 旋转 (cartoon convention). */}
-                {isRunning && (
+                    Mixed perspective: wheel face-on (8 sector) + rider profile
+                    (朝右). seat post / 腿 / pedal 在 rider group 不随 wheel
+                    旋转 (cartoon convention). */}
+                {false && isRunning && (
                   <g
                     fill="none"
                     stroke="#52525b"
@@ -2502,6 +2594,7 @@ export default function Home() {
                 )}
                 </g>
               </g>
+              </g>
 
               {/* Press preview 数字浮现：实时显示当前预览的 score 整数。
                   位置在被 press 扇区的中线略偏外缘（既不挡视线又跟着方向走）。
@@ -2560,39 +2653,42 @@ export default function Home() {
                         );
                       }
                       if (o.type === "cactus") {
-                        // 仙人掌 — chrome dinosaur 经典 silhouette: pillar + 2 arms
-                        const h = 22 + (idx % 3) * 4; // 22 / 26 / 30 height variations
+                        // 仙人掌 — chrome dinosaur 大 silhouette (80-109 height
+                        // from new distribution, 大一号). pillar + 2 L arms.
+                        const h = o.height;
+                        const pw = 18; // pillar width (再拉大)
+                        const al = 22; // arm horizontal extension
+                        const aw = 7;  // arm thickness
+                        const ah = h * 0.28; // arm hook vertical height
+                        const armY1 = y - h * 0.50;
+                        const armY2 = y - h * 0.65;
                         return (
                           <g key={`terrain-${idx}`}>
                             {/* main pillar */}
                             <rect
-                              x={x - 4}
+                              x={x - pw / 2}
                               y={y - h}
-                              width={8}
+                              width={pw}
                               height={h}
-                              rx={3}
+                              rx={6}
                               fill="#3f6212"
                               stroke="#1a2e05"
-                              strokeWidth={0.8}
+                              strokeWidth={1.2}
                             />
-                            {/* left arm */}
+                            {/* left arm — L-shape: 出 pillar 向左, 再上钩 */}
                             <path
-                              d={`M${x - 4},${y - h * 0.5} L${x - 10},${y - h * 0.5} L${x - 10},${y - h * 0.5 - 8} L${x - 6.5},${y - h * 0.5 - 8} L${x - 6.5},${y - h * 0.5 + 3} L${x - 4},${y - h * 0.5 + 3} Z`}
+                              d={`M${x - pw / 2},${armY1} L${x - pw / 2 - al},${armY1} L${x - pw / 2 - al},${armY1 - ah} L${x - pw / 2 - al + aw},${armY1 - ah} L${x - pw / 2 - al + aw},${armY1 + aw} L${x - pw / 2},${armY1 + aw} Z`}
                               fill="#3f6212"
                               stroke="#1a2e05"
-                              strokeWidth={0.8}
+                              strokeWidth={1.2}
                             />
-                            {/* right arm */}
+                            {/* right arm — L-shape: 出 pillar 向右, 再上钩 */}
                             <path
-                              d={`M${x + 4},${y - h * 0.65} L${x + 10},${y - h * 0.65} L${x + 10},${y - h * 0.65 - 7} L${x + 6.5},${y - h * 0.65 - 7} L${x + 6.5},${y - h * 0.65 + 3} L${x + 4},${y - h * 0.65 + 3} Z`}
+                              d={`M${x + pw / 2},${armY2} L${x + pw / 2 + al},${armY2} L${x + pw / 2 + al},${armY2 - ah} L${x + pw / 2 + al - aw},${armY2 - ah} L${x + pw / 2 + al - aw},${armY2 + aw} L${x + pw / 2},${armY2 + aw} Z`}
                               fill="#3f6212"
                               stroke="#1a2e05"
-                              strokeWidth={0.8}
+                              strokeWidth={1.2}
                             />
-                            {/* small spike dots on pillar (silhouette texture) */}
-                            <line x1={x - 2} y1={y - h * 0.3} x2={x - 2} y2={y - h * 0.3 - 1.5} stroke="#1a2e05" strokeWidth={0.6} />
-                            <line x1={x + 2} y1={y - h * 0.55} x2={x + 2} y2={y - h * 0.55 - 1.5} stroke="#1a2e05" strokeWidth={0.6} />
-                            <line x1={x - 2} y1={y - h * 0.75} x2={x - 2} y2={y - h * 0.75 - 1.5} stroke="#1a2e05" strokeWidth={0.6} />
                           </g>
                         );
                       }
