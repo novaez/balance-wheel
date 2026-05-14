@@ -74,10 +74,11 @@ const PRESENCE_PLACEHOLDERS = [
 // 漫画 margin 角落随手画的小图). Doodle pool 跟 placeholder 同 craft 哲学
 // — pool 里多 variants random pick per visit, register 一致但 phrase/visual
 // 不同, 单 visit 稳定不抖.
-type DoodleVariant = "stickFigure" | "animal" | "heart" | "cloud" | "sun" | "moon" | "star" | "cup";
+type DoodleVariant = "stickFigure" | "animal" | "heart" | "cloud" | "sun" | "moon" | "star" | "cup" | "badminton" | "basketball" | "book" | "balloon";
 const DOODLE_POOL: DoodleVariant[] = [
   "stickFigure", "animal", "heart",
   "cloud", "sun", "moon", "star", "cup",
+  "badminton", "basketball", "book", "balloon",
 ];
 
 // Doodle margin position pool (避开 wheel 中心 + 文字主区, 落在 card 角落 /
@@ -207,6 +208,67 @@ function DoodleCup({ size = 26 }: { size?: number }) {
   );
 }
 
+function DoodleBadminton({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size * 1.2} viewBox="-10 -16 20 24">
+      <g fill="none" stroke="#52525b" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+        {/* cork ball */}
+        <circle cx="0" cy="5" r="3" fill="white" />
+        {/* feather skirt — top ring + slat lines */}
+        <path d="M -6 -10 Q 0 -13 6 -10 L 3 4 Q 0 5 -3 4 Z" fill="#fef3c7" fillOpacity={0.5} />
+        <path d="M -4 -9 L -2 4" />
+        <path d="M 0 -12 L 0 4" />
+        <path d="M 4 -9 L 2 4" />
+      </g>
+    </svg>
+  );
+}
+
+function DoodleBasketball({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="-10 -10 20 20">
+      <g fill="none" stroke="#52525b" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="0" cy="0" r="8" fill="#fb923c" />
+        <path d="M 0 -8 L 0 8" />
+        <path d="M -8 0 Q 0 -3 8 0" />
+        <path d="M -8 0 Q 0 3 8 0" />
+      </g>
+    </svg>
+  );
+}
+
+function DoodleBook({ size = 30 }: { size?: number }) {
+  return (
+    <svg width={size} height={size * 0.7} viewBox="-13 -9 26 18">
+      <g fill="none" stroke="#52525b" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+        {/* left page */}
+        <path d="M -11 -6 Q -7 -7 -1 -6 L -1 7 Q -7 6 -11 7 Z" fill="white" />
+        {/* right page */}
+        <path d="M 11 -6 Q 7 -7 1 -6 L 1 7 Q 7 6 11 7 Z" fill="white" />
+        {/* lines */}
+        <path d="M -8 -3 L -3 -3" />
+        <path d="M -8 -1 L -4 -1" />
+        <path d="M 3 -3 L 8 -3" />
+        <path d="M 3 -1 L 7 -1" />
+      </g>
+    </svg>
+  );
+}
+
+function DoodleBalloon({ size = 26 }: { size?: number }) {
+  return (
+    <svg width={size} height={size * 1.4} viewBox="-9 -12 18 25">
+      <g fill="none" stroke="#52525b" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M 0 -10 Q 6 -10 6 -4 Q 6 2 0 4 Q -6 2 -6 -4 Q -6 -10 0 -10 Z" fill="#fda4af" fillOpacity={0.7} />
+        {/* tie knot */}
+        <path d="M -1.5 4 L 1.5 4 L 0 6 Z" fill="#52525b" />
+        {/* string */}
+        <path d="M 0 6 Q 1 8 -0.5 10 Q -1 11.5 0.3 12.5" />
+      </g>
+    </svg>
+  );
+}
+
 // SVG string builders for Canvas PNG (parallel maintenance with React components above —
 // SVG defs 同步, 改一处两处都要改). Used in renderCardToPng to drawImage.
 function buildDoodleSvgString(variant: DoodleVariant, sizePx: number): string {
@@ -273,6 +335,44 @@ function buildDoodleSvgString(variant: DoodleVariant, sizePx: number): string {
     <path d="M -6 -2 L 6 -2"/>
     <path d="M -2 -7 Q -3 -10 -1 -13"/>
     <path d="M 2 -7 Q 3 -10 1 -13"/>
+  </g>
+</svg>`;
+    case "badminton":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx * 1.2}" viewBox="-10 -16 20 24">
+  <g fill="none" stroke="#52525b" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="0" cy="5" r="3" fill="white"/>
+    <path d="M -6 -10 Q 0 -13 6 -10 L 3 4 Q 0 5 -3 4 Z" fill="#fef3c7" fill-opacity="0.5"/>
+    <path d="M -4 -9 L -2 4"/>
+    <path d="M 0 -12 L 0 4"/>
+    <path d="M 4 -9 L 2 4"/>
+  </g>
+</svg>`;
+    case "basketball":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx}" viewBox="-10 -10 20 20">
+  <g fill="none" stroke="#52525b" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="0" cy="0" r="8" fill="#fb923c"/>
+    <path d="M 0 -8 L 0 8"/>
+    <path d="M -8 0 Q 0 -3 8 0"/>
+    <path d="M -8 0 Q 0 3 8 0"/>
+  </g>
+</svg>`;
+    case "book":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx * 0.7}" viewBox="-13 -9 26 18">
+  <g fill="none" stroke="#52525b" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M -11 -6 Q -7 -7 -1 -6 L -1 7 Q -7 6 -11 7 Z" fill="white"/>
+    <path d="M 11 -6 Q 7 -7 1 -6 L 1 7 Q 7 6 11 7 Z" fill="white"/>
+    <path d="M -8 -3 L -3 -3"/>
+    <path d="M -8 -1 L -4 -1"/>
+    <path d="M 3 -3 L 8 -3"/>
+    <path d="M 3 -1 L 7 -1"/>
+  </g>
+</svg>`;
+    case "balloon":
+      return `<svg ${ns} width="${sizePx}" height="${sizePx * 1.4}" viewBox="-9 -12 18 25">
+  <g fill="none" stroke="#52525b" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 0 -10 Q 6 -10 6 -4 Q 6 2 0 4 Q -6 2 -6 -4 Q -6 -10 0 -10 Z" fill="#fda4af" fill-opacity="0.7"/>
+    <path d="M -1.5 4 L 1.5 4 L 0 6 Z" fill="#52525b"/>
+    <path d="M 0 6 Q 1 8 -0.5 10 Q -1 11.5 0.3 12.5"/>
   </g>
 </svg>`;
   }
@@ -977,6 +1077,10 @@ async function renderCardToPng(opts: {
       moon: 60,
       star: 65,
       cup: 65,
+      badminton: 70,
+      basketball: 70,
+      book: 80,
+      balloon: 65,
     };
     const doodleHeightRatios: Record<DoodleVariant, number> = {
       stickFigure: 1.25,
@@ -987,6 +1091,10 @@ async function renderCardToPng(opts: {
       moon: 1.0,
       star: 1.0,
       cup: 1.1,
+      badminton: 1.2,
+      basketball: 1.0,
+      book: 0.7,
+      balloon: 1.4,
     };
     const dSize = doodlePngSizes[doodleVariant];
     const dHeight = dSize * doodleHeightRatios[doodleVariant];
@@ -1182,10 +1290,14 @@ export default function Home() {
     if (mode !== "running") return;
     if (pick && pick.metaphor !== "car") return;
     const startedAt = performance.now();
+    // Hold 末态 700ms 让 user 看清"wheel 停在中央" final pose 再切 reflect.
+    // 不加 hold = 5s rAF 一到立即 setMode reflect, wheel 滑到中心瞬间消失.
+    const HOLD_AFTER_RUN_MS = 700;
     const tick = (now: number) => {
-      const t = Math.min(now - startedAt, RUN_DURATION_MS) / RUN_DURATION_MS;
+      const elapsed = now - startedAt;
+      const t = Math.min(elapsed, RUN_DURATION_MS) / RUN_DURATION_MS;
       setProgress(easeInOutQuad(t));
-      if (t < 1) {
+      if (elapsed < RUN_DURATION_MS + HOLD_AFTER_RUN_MS) {
         rafRef.current = requestAnimationFrame(tick);
       } else {
         setMode("reflect");
@@ -1984,6 +2096,10 @@ export default function Home() {
                   {selectedDoodle === "moon" && <DoodleMoon size={24} />}
                   {selectedDoodle === "star" && <DoodleStar size={26} />}
                   {selectedDoodle === "cup" && <DoodleCup size={26} />}
+                  {selectedDoodle === "badminton" && <DoodleBadminton size={28} />}
+                  {selectedDoodle === "basketball" && <DoodleBasketball size={28} />}
+                  {selectedDoodle === "book" && <DoodleBook size={32} />}
+                  {selectedDoodle === "balloon" && <DoodleBalloon size={26} />}
                 </div>
               );
             })()}

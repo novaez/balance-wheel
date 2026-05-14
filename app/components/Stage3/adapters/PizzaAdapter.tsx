@@ -36,13 +36,19 @@ export const PIZZA_DURATION_MS = 7000;
 type Pose = "anticipate" | "catch" | "react";
 
 // Pose 时间轴 (per v2 §四 12 principles 兑现):
-// anticipate (期待眼神 + closed box dwell) 0-2s → catch (split view + slice
-// 撕飞 + animals catch) 2-4.5s → react (笑 + 摇手 + pizza fade) 4.5-7s → onFinish.
-// liushu polish: anticipate 缩短 (3s → 2s, 盒子打开前不停留过久).
+// anticipate (closed box dwell 缩短) 0-1.2s → box 打开 + pizza 完整 dwell (让
+// user 看清整张披萨) 1.2-2.7s → slice 撕飞 + animals catch 2.7s 起 → react
+// (笑 + 摇手 + pizza fade) 4.5-7s → onFinish.
+// liushu polish 2026-05-14: anticipate 2s → 1.2s (再缩短), 加 1.5s pizza
+// 完整 dwell (slice 飞前能看清整张披萨, 不再"还没看到全披萨就飞没了").
 const POSE_TIMELINE = {
-  catchAt: 2000,
+  catchAt: 1200,
   reactAt: 4500,
 };
+// Box 打开后到 slice 开始飞之间 pizza 完整可见时长. 0 = 立即飞 (旧行为),
+// 1500 = 1.5s dwell. 在 catch phase 内 (catchAt 触发 box 打开, 之后 dwell
+// 再开始 slice fly).
+const PIZZA_WHOLE_DWELL_MS = 1500;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Animal character mapping — fixed by-dim (liushu 拍板 2026-05-12).
@@ -345,9 +351,12 @@ export function PizzaAdapter(
     const t1 = window.setTimeout(() => setPose("catch"), POSE_TIMELINE.catchAt);
     const t2 = window.setTimeout(() => setPose("react"), POSE_TIMELINE.reactAt);
     const t3 = window.setTimeout(() => onFinish?.(), PIZZA_DURATION_MS);
+    // wheelOut (整 pizza 从 box 内 fade) 时机 = slice 开始飞 + 100ms (slice 已
+    // 离开起点, wheel 可 fade 不突兀). 旧版 1500 = catchAt + 1500 跟 slice 同步,
+    // 但现在 slice 推迟 PIZZA_WHOLE_DWELL_MS, wheelOut 也跟着推.
     const t4 = window.setTimeout(
       () => setWheelOut(true),
-      POSE_TIMELINE.catchAt + 1500,
+      POSE_TIMELINE.catchAt + PIZZA_WHOLE_DWELL_MS + 100,
     );
 
     return () => {
@@ -393,7 +402,9 @@ export function PizzaAdapter(
       // 终点 animal position. "扔" 视觉感, 跟 12 principles "arc" anchor align.
       const peakX = (SLICE_START_LOCAL.x + target.x) / 2;
       const peakY = (SLICE_START_LOCAL.y + target.y) / 2 - 60;
-      const sliceDelay = dimIdx * 0.08;
+      // 加 PIZZA_WHOLE_DWELL_MS base delay: slice 不立即飞, 让 pizza 完整
+      // dwell 1.5s 后才开始撕飞 stagger.
+      const sliceDelay = PIZZA_WHOLE_DWELL_MS / 1000 + dimIdx * 0.08;
       const stl = gsap.timeline({ delay: sliceDelay });
       stl.to(elem, { opacity: 1, duration: 0.1 });
       stl.to(
