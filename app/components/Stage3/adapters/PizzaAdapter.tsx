@@ -72,37 +72,30 @@ export const ANIMALS_BY_DIM: AnimalChar[] = [
   { id: "rabbit",   zh: "兔子",   size: 1.45, color: "#06b6d4", hasPng: true  }, // 另一半/爱情 — 心跳/温柔
   { id: "cat",      zh: "猫",     size: 1.20, color: "#f59e0b", hasPng: true  }, // 娱乐与休闲 — 自在放松
   { id: "elephant", zh: "大象",   size: 3.25, color: "#3b82f6", hasPng: true  }, // 健康 — 身体是基石
-  { id: "mouse",    zh: "老鼠",   size: 1.00, color: "#ec4899", hasPng: false }, // 财富 — 储粮敏感
-  { id: "giraffe",  zh: "长颈鹿", size: 1.85, color: "#10b981", hasPng: false }, // 个人成长 — 高视野
-  { id: "bird",     zh: "小鸟",   size: 1.00, color: "#f97316", hasPng: false }, // 环境 — 轻盈飞行
-  { id: "tiger",    zh: "老虎",   size: 2.10, color: "#a855f7", hasPng: false }, // 职业 — 进取强势
+  { id: "mouse",    zh: "老鼠",   size: 1.00, color: "#ec4899", hasPng: true  }, // 财富 — 储粮敏感
+  { id: "giraffe",  zh: "长颈鹿", size: 1.85, color: "#10b981", hasPng: true  }, // 个人成长 — 高视野
+  { id: "bird",     zh: "小鸟",   size: 1.00, color: "#f97316", hasPng: true  }, // 环境 — 轻盈飞行
+  { id: "tiger",    zh: "老虎",   size: 2.10, color: "#a855f7", hasPng: true  }, // 职业 — 进取强势
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AnimalImage — PNG <image> render, fallback placeholder 占位.
 // ─────────────────────────────────────────────────────────────────────────────
-// Per-pose size 补偿 — ChatGPT generate 3 pose PNG canvas fill ratio inherent:
-//   catch (双手抱 chest 紧凑) ~76% canvas fill,
-//   anticipate (双手前伸) ~68%,
-//   react (单手举高 vertical stretch) ~60%.
-// 同 SVG display box 内, character pixel size = displaySize × canvas_fill_ratio.
+// Per-pose size — normalize 后全 PNG 1024×1024 square, character canvas
+// occupancy 均匀, 不需要 per-pose compensation. 全 1.0.
+// (历史: 之前 mixed 原 sizes 时用 { anticipate: 1.05, catch: 0.93, react: 1.18 }
+// 补偿; normalize 后 reset.)
 const POSE_SIZE_SCALE: Record<Pose, number> = {
-  anticipate: 1.05,
-  catch: 0.93,
-  react: 1.18,
+  anticipate: 1.0,
+  catch: 1.0,
+  react: 1.0,
 };
 
-// Per-animal per-pose override — 个别 animal × pose PNG canvas occupancy 异常
-// (character 在 canvas 内占比偏小), 需要 extra scale 补偿匹配 lineup 其它
-// animals. 不重 generate PNG, SVG side scale 修正.
-// liushu observed: 大象 react 比 河马/猫/兔子 都小 (大象 character canvas
-// 占比 inherently smaller). 加 extra scale 1.4 (覆盖 base react 1.18) → 大象
-// react display character 跟其它 animals react 一致 size.
+// Per-animal per-pose override — normalize 后 character canvas 均匀, 暂不需要.
+// 保留 type signature 为以后 per-animal 微调 留 hook.
 const ANIMAL_POSE_OVERRIDE: Partial<
   Record<string, Partial<Record<Pose, number>>>
-> = {
-  elephant: { react: 1.4 },
-};
+> = {};
 
 // 显示尺寸 = BASE × scoreFactor × perspectiveScale × POSE_SIZE_SCALE:
 //   - scoreFactor: 0.5 (score 0) → 1.2 (score 10) — animal size 完全 score-
