@@ -91,8 +91,9 @@ const POSE_SIZE_SCALE: Record<Pose, number> = {
   react: 1.0,
 };
 
-// Per-animal per-pose override — normalize 后 character canvas 均匀, 暂不需要.
-// 保留 type signature 为以后 per-animal 微调 留 hook.
+// Per-animal per-pose override — 经过 magick trim + south extent 处理后, 所有
+// PNG character bounding box uniform (脚底 at canvas bottom, max dim = 1024).
+// 不再需要 per-animal canvas occupancy compensation. 保留 hook 供未来微调.
 const ANIMAL_POSE_OVERRIDE: Partial<
   Record<string, Partial<Record<Pose, number>>>
 > = {};

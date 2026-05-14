@@ -733,13 +733,14 @@ const VBOX_EVAL = {
   h: (MAX_RADIUS + VBOX_PAD) * 2,
 };
 // Phase 3 polish — 车 metaphor viewBox (镜头退后 + 独轮车 rider 上方空间):
-//   y top -220 → -300 (加 80 单位上方空间给 rider standing on wheel top)
-//   w/h 不变 (rider 上方 visible, wheel center still y=0).
+//   y top -220 → -300 → -380 (再加 80 单位上方空间给 长 seat post + 高坐 rider)
+//   y top bump 同时让 wheel 在视口里相对小, 跟真 unicycle 几何 (轮小 + rider 高坐) 对应
+//   w 不变 (1050), h 跟着 +80 → 900
 const VBOX_RUN = {
   x: -525,
-  y: -300,
+  y: -380,
   w: 1050,
-  h: 820,
+  h: 900,
 };
 
 type Mode = "eval" | "running" | "reflect" | "presence" | "done";
@@ -2426,17 +2427,20 @@ export default function Home() {
                       </g>
                     )}
                 </g>
-                {/* 独轮车 rider — profile 侧面骑车小人 (面朝右 = 前进方向).
+                {/* 独轮车 rider — 真 unicycle 几何 (参 liushu 给的实拍图).
                     跟 bob + slopeTilt 一起动 (在该 group 内), 不跟 wheel rotation
                     (在 rotation group 外). Only visible 在 Stage 3 running mode.
 
-                    Mixed perspective: wheel face-on (露 8 sector) + rider profile
-                    (露朝向) — Calvin & Hobbes / Wallace & Gromit 常见 cartoon
-                    convention, 不严谨但好读.
+                    关键几何 (跟 bicycle 区别):
+                    - **NO handlebar** — 真 unicycle 没把手, 双臂 free balance
+                    - **长 seat post** 从 hub 撑上去 (~220 单位), saddle 高坐
+                    - rider **upright** 直立姿态 + 一只手臂打开 balance
+                    - 双 crank + 双 pedal 跨 hub 两侧 (4 o'clock + 10 o'clock 反向)
+                    - 一只脚踩前 pedal 显腿, 另一脚 hidden 在反向 pedal
 
-                    Bike 结构: 鞍座 saddle 在 wheel 顶, 把手 handlebar 前上方,
-                    rider 坐 saddle 上身体前倾, 手抓 handle, 一只脚踏 wheel rim
-                    前缘 (远侧脚 hidden, 卡通常用单脚显形). */}
+                    Mixed perspective convention: wheel face-on (8 sector) +
+                    rider profile (朝右 = 前进方向). seat post / 腿 / pedal
+                    在 rider group 不随 wheel 旋转 (cartoon convention). */}
                 {isRunning && (
                   <g
                     fill="none"
@@ -2445,86 +2449,55 @@ export default function Home() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   >
-                    {/* 鞍座 saddle (实心 鸟 嘴 状, profile) */}
-                    <path
-                      d="M -8 -168 L 16 -168 Q 20 -171 18 -175 L -4 -175 Q -8 -174 -8 -168 Z"
-                      fill="#52525b"
-                      stroke="#52525b"
-                      strokeWidth={1}
-                      strokeLinejoin="round"
-                    />
+                    {/* === unicycle 机械结构 === */}
 
-                    {/* 把手 handlebar stem (saddle 前方斜向上往前) */}
-                    <path d="M 14 -172 Q 28 -195 38 -212" />
+                    {/* hub 中心 marker */}
+                    <circle cx={0} cy={0} r={3.5} fill="#52525b" stroke="none" />
 
-                    {/* 把手 grip (短水平 bar, 粗 stroke 显 grip 体感) */}
-                    <line x1={32} y1={-208} x2={44} y2={-214} strokeWidth={3.5} />
+                    {/* seat post: hub 长杆撑到 saddle (穿 wheel face 凸出顶) */}
+                    <line x1={0} y1={0} x2={0} y2={-220} strokeWidth={3} />
 
-                    {/* 身体 body trunk leaning forward (profile, 微前倾) */}
-                    <path d="M 4 -176 Q 14 -210 24 -242" />
+                    {/* 鞍座 saddle (横扁 ellipse) */}
+                    <ellipse cx={0} cy={-225} rx={20} ry={5} fill="#52525b" stroke="none" />
 
-                    {/* 手臂 arm forward to handlebar */}
-                    <path d="M 20 -240 Q 30 -228 40 -214" />
+                    {/* 后 crank arm + pedal (10 o'clock 反向位, 显双 pedal 几何) */}
+                    <path d="M 0 0 L -50 -30" strokeWidth={2.5} />
+                    <ellipse cx={-50} cy={-32} rx={9} ry={3.5} fill="#52525b" stroke="none" />
 
-                    {/* 手 hand on grip (cream fill 跟 head 同 = '皮肤') */}
-                    <circle cx={40} cy={-214} r={4} fill="#fef3c7" />
+                    {/* === rider torso === */}
 
-                    {/* === 脚蹬子结构 (crank + pedal + 脚 + Z 形腿) ===
-                        crank arm 从 wheel hub (0,0) 伸到 ~5 o'clock 位置,
-                        pedal 横挂 crank 末端, 脚踩 pedal 上, 腿 Z 形 弯曲
-                        (大腿前送至膝盖, 小腿回收下到脚). 这才是 profile
-                        bike 的 iconic 几何, 也是 "脚蹬子跟轮子连一起" 的
-                        mechanical 关系显形.
+                    {/* 身体 body upright (微前倾, 真 unicycle 直立姿态) */}
+                    <path d="M 0 -228 Q 1 -260 2 -300" strokeWidth={2.5} />
 
-                        wheel sectors 在底层旋转, 这套 pedal+leg 在 rider
-                        group 不旋转 — cartoon convention 接受 (Calvin
-                        & Hobbes 骑车场景同款). 远侧脚 hidden 单腿可见. */}
+                    {/* 一只手臂前伸 / balance (单臂可见, 远臂 hidden in profile) */}
+                    <path d="M 2 -290 Q 14 -278 26 -270" strokeWidth={2} />
+                    <circle cx={26} cy={-270} r={3.5} fill="#fef3c7" />
 
-                    {/* 曲柄 crank arm: hub 到 pedal */}
-                    <path d="M 0 0 L 58 12" strokeWidth={2.5} />
+                    {/* === head profile facing right === */}
 
-                    {/* 脚蹬 pedal (短粗横 bar 在 crank 末端) */}
-                    <line x1={50} y1={9} x2={66} y2={15} strokeWidth={4} />
+                    <circle cx={6} cy={-318} r={15} fill="#fef3c7" />
+                    <circle cx={13} cy={-318} r={2.5} fill="#52525b" stroke="none" />
+                    <path d="M 21 -320 Q 24 -317 21 -314" strokeWidth={1.3} />
+                    <path d="M 13 -310 Q 17 -308 20 -310" strokeWidth={1.3} />
 
-                    {/* 鞋 / 脚 on pedal */}
-                    <ellipse
-                      cx={58}
-                      cy={6}
-                      rx={9}
-                      ry={3.5}
-                      fill="#52525b"
-                      stroke="none"
-                    />
+                    {/* 头发 spiky hair tufts (Calvin 风) */}
+                    <path d="M -7 -325 L -10 -333" strokeWidth={1.5} />
+                    <path d="M -1 -331 L -3 -340" strokeWidth={1.5} />
+                    <path d="M 5 -333 L 5 -343" strokeWidth={1.5} />
+                    <path d="M 11 -331 L 13 -340" strokeWidth={1.5} />
 
-                    {/* 大腿 thigh: hip 前送 + 下落到膝盖 */}
-                    <path d="M 4 -176 Q 28 -130 50 -65" strokeWidth={2.5} />
+                    {/* === 单腿 + 前 pedal (rendered last 让脚踩最上层) === */}
 
-                    {/* 小腿 shin: 膝盖回收 + 下落到 pedal 上的脚 */}
-                    <path d="M 50 -65 Q 60 -28 58 4" strokeWidth={2.5} />
+                    {/* 大腿 thigh: hip 前送 down 到膝盖 (远端 forward + below wheel top) */}
+                    <path d="M 1 -228 Q 28 -160 50 -100" strokeWidth={2.5} />
 
-                    {/* 头 head profile (facing right) */}
-                    <circle cx={26} cy={-260} r={18} fill="#fef3c7" />
+                    {/* 小腿 shin: 膝盖回收 down 到前 pedal 位置 */}
+                    <path d="M 50 -100 Q 60 -50 50 28" strokeWidth={2.5} />
 
-                    {/* 眼睛 single eye (前侧, 朝右看) */}
-                    <circle
-                      cx={36}
-                      cy={-260}
-                      r={2.5}
-                      fill="#52525b"
-                      stroke="none"
-                    />
-
-                    {/* 鼻子 nose bump (右侧凸起) */}
-                    <path d="M 44 -262 Q 47 -259 44 -256" strokeWidth={1.3} />
-
-                    {/* 嘴 mouth (小笑) */}
-                    <path d="M 36 -252 Q 40 -250 43 -252" strokeWidth={1.3} />
-
-                    {/* 头发 spiky hair (后脑 + 头顶, Calvin 风) */}
-                    <path d="M 10 -266 L 6 -274" strokeWidth={1.5} />
-                    <path d="M 16 -274 L 12 -282" strokeWidth={1.5} />
-                    <path d="M 22 -276 L 20 -286" strokeWidth={1.5} />
-                    <path d="M 28 -274 L 28 -284" strokeWidth={1.5} />
+                    {/* 前 crank arm (4 o'clock) + pedal + 鞋 (鞋在 pedal 上) */}
+                    <path d="M 0 0 L 50 30" strokeWidth={2.5} />
+                    <ellipse cx={50} cy={32} rx={9} ry={3.5} fill="#52525b" stroke="none" />
+                    <ellipse cx={50} cy={26} rx={10} ry={3.5} fill="#52525b" stroke="none" />
                   </g>
                 )}
                 </g>
