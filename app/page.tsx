@@ -1685,7 +1685,26 @@ export default function Home() {
   // 让 wheel render 跟 Stage 1 一致 (无地面 + 原始大小).
   const showGround = isRunning;
   const vbox = showGround ? VBOX_RUN : VBOX_EVAL;
-  const rotation = isRunning ? progress * RUN_TOTAL_ROTATION_DEG : 0;
+  // Rotation 两段: 0-0.7 linear (chrome dino 旋律), 0.7-1 ease-out 减速到 0
+  // (velocity-matched 衔接 linear 段, 末态 wheel 停转). 配合 wheel translate
+  // 滑到中心 → "wheel 边滚边滑到中央, 同步刹住" 效果.
+  // Ground 用 groundEffectiveRotation (cap at 0.7) → 后 30% 地面冻结.
+  const GROUND_PLATEAU_PROGRESS = 0.7;
+  const groundEffectiveRotation =
+    Math.min(progress, GROUND_PLATEAU_PROGRESS) * RUN_TOTAL_ROTATION_DEG;
+  const rotation = (() => {
+    if (!isRunning) return 0;
+    if (progress <= GROUND_PLATEAU_PROGRESS) {
+      return progress * RUN_TOTAL_ROTATION_DEG;
+    }
+    // Decel phase: ease-out velocity match. extraMax = linearRate × decelLen
+    // / 2 → 衔接处 velocity continuous, 末态 velocity = 0.
+    const slideT = (progress - GROUND_PLATEAU_PROGRESS) / (1 - GROUND_PLATEAU_PROGRESS);
+    const slideEase = 1 - Math.pow(1 - slideT, 2);
+    const linearRotationAtPlateau = GROUND_PLATEAU_PROGRESS * RUN_TOTAL_ROTATION_DEG;
+    const extraMax = (RUN_TOTAL_ROTATION_DEG * (1 - GROUND_PLATEAU_PROGRESS)) / 2;
+    return linearRotationAtPlateau + extraMax * slideEase;
+  })();
   // In reflect/presence/done, rotation is 0 (= 720 mod 360, same final
   // orientation), so computeBob gives the same resting offset the wheel had
   // at end-of-ride — no upward jolt at running→reflect transition.
@@ -1693,14 +1712,45 @@ export default function Home() {
   // bob 动画，而不是用 computeBob（那个跟跑车物理耦合，不适合 reveal 时刻）。
   const bob = showGround ? computeBob(rotation, scores) : 0;
   const groundOffset = isRunning
-    ? ((rotation * GROUND_PER_DEG) % TICK_SPACING + TICK_SPACING) % TICK_SPACING
+    ? ((groundEffectiveRotation * GROUND_PER_DEG) % TICK_SPACING + TICK_SPACING) % TICK_SPACING
     : 0;
 
   // Phase 1.5t — wheel 经过 obstacle 时上下跟随 + 放大. obstaclesData /
   // groundCurveDeviation 提到 component scope 让 wheel transform 和 ground
   // render block 都能 reuse. wheel center SVG x = 0; obstacle x in SVG =
   // 0 + atProgress - groundProgressAbs.
-  const groundProgressAbs = isRunning ? rotation * GROUND_PER_DEG : 0;
+  // 用 groundEffectiveRotation (cap at 0.7) 让 ground plateau, wheel rotation
+  // (`rotation`) 仍走 full linear 让 wheel 继续 spin.
+  const groundProgressAbs = isRunning ? groundEffectiveRotation * GROUND_PER_DEG : 0;
+  // Wheel "rolls into center then stops" — 前 70% 保留 chrome dino 视位
+  // (x=-450, cactus encounter 节奏正常) + 后 30% ease-out 到 visual center
+  // (-75 = viewBox center). 让动画末态停在中央, 视觉"减速归位".
+  const CENTER_TRANSITION_START = 0.7;
+  const WHEEL_X_START = -450;
+  const WHEEL_X_END = -75; // viewBox x=-625 + w=1100, 中心 = -75
+  const wheelCenterProgress = isRunning
+    ? Math.max(0, Math.min(1, (progress - CENTER_TRANSITION_START) / (1 - CENTER_TRANSITION_START)))
+    : 0;
+  const wheelCenterEased = 1 - Math.pow(1 - wheelCenterProgress, 2);
+  const wheelEntryX = isRunning
+    ? WHEEL_X_START + (WHEEL_X_END - WHEEL_X_START) * wheelCenterEased
+    : 0;
+  // Clouds — parallax 0.3 + modulo wrap (保持 continuous coverage, 不至于
+  // 全部 drift 出 viewBox). Wrap range 1200 单位 (viewBox 宽 1100 + buffer).
+  const CLOUD_PARALLAX = 0.3;
+  const CLOUD_WRAP_RANGE = 1200;
+  const CLOUD_WRAP_LEFT = -625;
+  const cloudShift = groundProgressAbs * CLOUD_PARALLAX;
+  function wrappedCloudX(anchor: number): number {
+    const raw = anchor - cloudShift;
+    return (
+      (((raw - CLOUD_WRAP_LEFT) % CLOUD_WRAP_RANGE) + CLOUD_WRAP_RANGE) %
+        CLOUD_WRAP_RANGE +
+      CLOUD_WRAP_LEFT
+    );
+  }
+  const cloud1X = isRunning ? wrappedCloudX(-450) : -450;
+  const cloud2X = isRunning ? wrappedCloudX(420) : 420;
   // Phase 3c — terrain enrichment (design §六). 替换 Phase 2 的 bump/pit 二
   // 元 obstacles 为 6 种 terrain element: pit (沟) / slope-up / slope-down /
   // sand (沙地) / snow (雪地) / rock (石块, Phase 2 bump 复用) / grass (装饰).
@@ -1718,22 +1768,22 @@ export default function Home() {
   };
   const obstaclesData = useMemo<TerrainElement[]>(() => {
     const rng = mulberry32(hashSeed(runId, 0xb04d));
-    // Phase 3 polish — chrome dino 风 cactus encounter pattern: 整段 wheel
-    // 旅程只 3 次 cactus 出现, sizes [1, 3, 2] (1 单 + 3 一簇 + 2 一簇).
-    // Group 位置在 ground 距离 [600-900, 1500-1800, 2400-2700], 每组内
-    // intra-spacing 38 让 cluster 紧凑. rock + pit 分散 scattered.
+    // Phase 3 polish — chrome dino 风 cactus encounter: 2-4 groups, 每组
+    // 1-3 cacti, group 中心在 [400, 2900] 区间分布. 每次 run cluster 数
+    // 跟 size 都随机 → 真正"每次地形不一样"体感.
     const items: TerrainElement[] = [];
 
-    // === Cactus: 3 encounters with varied cluster sizes ===
-    const groupSizes = [1, 3, 2]; // 1 单, 1 簇 of 3, 1 簇 of 2
-    const groupCenters = [
-      600 + Math.floor(rng() * 300),  // 600-900
-      1500 + Math.floor(rng() * 300), // 1500-1800
-      2400 + Math.floor(rng() * 300), // 2400-2700
-    ];
+    // === Cactus: 2-4 groups, 每组 1-3 cacti, 区间分布 ===
+    const groupCount = 2 + Math.floor(rng() * 3); // 2 / 3 / 4
+    const groupGap = (2900 - 400) / groupCount;
+    const groupCenters: number[] = [];
+    for (let g = 0; g < groupCount; g++) {
+      const center = 400 + g * groupGap + Math.floor(rng() * groupGap * 0.6);
+      groupCenters.push(center);
+    }
     const intraSpacing = 38;
-    groupSizes.forEach((size, gi) => {
-      const baseAt = groupCenters[gi];
+    groupCenters.forEach((baseAt) => {
+      const size = 1 + Math.floor(rng() * 3); // 1 / 2 / 3
       for (let i = 0; i < size; i++) {
         items.push({
           atProgress: baseAt + i * intraSpacing,
@@ -1808,7 +1858,10 @@ export default function Home() {
   // (liushu "往回拽一点": × 4 太夸张 wheel 沉地下太多, × 2 跟新 height
   // (rock 38-55 / pit 55-76) 配合 wheel sink/rise 47-95% 自身 radius,
   // 戏剧但 wheel 仍可见).
-  const obstacleBob = showGround ? groundCurveDeviation(-450) * 2 : 0;
+  // Sample at wheelEntryX (随 wheel 位置动): 后 30% wheel 从 -450 ease 到 -75,
+  // 跨越的地形若有 rock/pit, wheel 要随之 bob, 不能停留在 -450 的 ground curve
+  // (那位置可能是平地 / 是 pit, 跟当前 wheel x 位置错位 → wheel 浮空).
+  const obstacleBob = showGround ? groundCurveDeviation(wheelEntryX) * 2 : 0;
 
   // Phase 3c — slope micro tilt ±2°. wheel 不变形 boundary 守 (design §六:
   // 禁 squash/stretch/spring, 仅允许 micro tilt 反映 self 适应 environment 的
@@ -2013,8 +2066,11 @@ export default function Home() {
                 })()}
               </p>
 
-              {/* Watermark — Latin handwriting echoes the Chinese script above. */}
-              <p className="font-en-hand text-sm tracking-wide text-zinc-400">
+              {/* Watermark — Latin handwriting echoes the Chinese script above.
+                  mt-6 加跟 sign-off 之间额外间距 (24+24=48px effective),
+                  对位 Canvas PNG 渲染的 watermark 在 PNG_HEIGHT - 70 跟 sign-off
+                  之间的 breathing room. */}
+              <p className="font-en-hand mt-6 text-sm tracking-wide text-zinc-400">
                 wheel of life
               </p>
 
@@ -2194,11 +2250,11 @@ export default function Home() {
               </g>
 
               {/* Phase 3 polish — sky clouds 稀疏 silhouette (chrome dino vibe).
-                  2 朵 (从 4 朵减), 远侧 + 大间距, register 跟 DoodleCloud
-                  (line 148) 同源. 仅 running mode (eval/reflect viewBox 不同). */}
+                  parallax 0.3 跟 ground 同步 drift, modulo wrap 保 continuous
+                  coverage. register 跟 DoodleCloud (line 148) 同源. */}
               {isRunning && (
                 <g pointerEvents="none">
-                  <g transform="translate(-450 -230)">
+                  <g transform={`translate(${cloud1X.toFixed(2)} -230)`}>
                     <path
                       d="M -18 4 Q -22 -3 -14 -5 Q -8 -10 0 -7 Q 8 -10 14 -5 Q 22 -3 18 4 L 14 5 L -14 5 Z"
                       fill="white"
@@ -2208,7 +2264,7 @@ export default function Home() {
                       strokeLinecap="round"
                     />
                   </g>
-                  <g transform="translate(420 -250) scale(1.1)">
+                  <g transform={`translate(${cloud2X.toFixed(2)} -250) scale(1.1)`}>
                     <path
                       d="M -18 4 Q -22 -3 -14 -5 Q -8 -10 0 -7 Q 8 -10 14 -5 Q 22 -3 18 4 L 14 5 L -14 5 Z"
                       fill="white"
@@ -2226,7 +2282,7 @@ export default function Home() {
                   侧 (chrome dino 角色定位), 仍坐 ground line (y=166).
                   eval/reflect 模式 wheel 保持原 size (transform undefined).
                   (motion lines + dust 之前 4+4 装饰 liushu "像几行小字" 已删) */}
-              <g transform={isRunning ? "translate(-450 54) scale(0.7)" : undefined}>
+              <g transform={isRunning ? `translate(${wheelEntryX.toFixed(2)} 54) scale(0.7)` : undefined}>
               <g transform={`translate(0 ${(bob + obstacleBob).toFixed(3)})`}>
                 {/* Phase 3c — slope micro tilt 包在 rotate 外 (rotate 是 wheel
                     自身角度, tilt 是车身相对 ground 的姿态, 两者独立). */}
@@ -2571,7 +2627,7 @@ export default function Home() {
                   <div className="flex w-full overflow-hidden rounded-full bg-zinc-900 shadow-sm">
                     <button
                       type="button"
-                      onClick={() => startRide()}
+                      onClick={() => startRide("car")}
                       className="flex-1 px-6 py-3 text-base font-medium text-white transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
                     >
                       玩一玩 →
@@ -2725,7 +2781,7 @@ export default function Home() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => startRide()}
+                  onClick={() => startRide(pick?.metaphor ?? "car")}
                   className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
                 >
                   再玩一次
