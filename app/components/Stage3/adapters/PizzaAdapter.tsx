@@ -81,19 +81,15 @@ export const ANIMALS_BY_DIM: AnimalChar[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 // AnimalImage — PNG <image> render, fallback placeholder 占位.
 // ─────────────────────────────────────────────────────────────────────────────
-// Per-pose size — normalize 后全 PNG 1024×1024 square, character canvas
-// occupancy 均匀, 不需要 per-pose compensation. 全 1.0.
-// (历史: 之前 mixed 原 sizes 时用 { anticipate: 1.05, catch: 0.93, react: 1.18 }
-// 补偿; normalize 后 reset.)
+// 所有 PNG 经 magick trim + south-extent normalize → trim_height ≈ 1024 uniform.
+// displaySize 一致 → 字符高度一致 + 脚底同 y baseline.
+// Width silhouette 差异 (giraffe 555 vs hippo 1024) 是 character identity, 保留.
 const POSE_SIZE_SCALE: Record<Pose, number> = {
   anticipate: 1.0,
   catch: 1.0,
   react: 1.0,
 };
 
-// Per-animal per-pose override — 经过 magick trim + south extent 处理后, 所有
-// PNG character bounding box uniform (脚底 at canvas bottom, max dim = 1024).
-// 不再需要 per-animal canvas occupancy compensation. 保留 hook 供未来微调.
 const ANIMAL_POSE_OVERRIDE: Partial<
   Record<string, Partial<Record<Pose, number>>>
 > = {};
@@ -138,16 +134,14 @@ function AnimalImage({
   const half = displaySize / 2;
 
   if (animal.hasPng) {
-    // 3-layer overlay: 3 pose PNG 各自 opacity, 切换时 fade transition.
-    // Browser 第一次 load 后 cached, 后续 opacity toggle 不重新 fetch.
     return (
       <g className={`animal-${animal.id}`}>
         {(["anticipate", "catch", "react"] as Pose[]).map((p) => (
           <image
             key={p}
-            href={`/assets/pizza/pizza-${animal.id}-${p}.png`}
+            href={`/assets/pizza/pizza-${animal.id}-${p}.webp`}
             x={x - half}
-            y={y - displaySize + 8} // 脚底锚定 y, image 向上展开
+            y={y - displaySize + 8}
             width={displaySize}
             height={displaySize}
             preserveAspectRatio="xMidYMid meet"

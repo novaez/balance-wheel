@@ -56,7 +56,7 @@ const COMMITMENT_MAX_LEN = 80;
 // Note: commitment fall back 等于 commitment "默认值实际做了", 跟圆桌 4
 // §双守则覆盖 narrative tension — 2026-05-11 liushu 转向, 圆桌 4 doc 同步 amend.
 const PRESENCE_PLACEHOLDERS = [
-  "嗯，颠",                       // 极简反应 (李四 anchor "放假的车" echo)
+  "嗯，就这样",                   // 极简反应 (李四 anchor 接纳 echo, cross-metaphor)
   "看见了",                       // 觉察
   "今天好像就是这样",             // 接纳 + 不评判
   "这一阵子，真的累",             // 真诚情绪
@@ -1367,12 +1367,16 @@ export default function Home() {
     });
   }, []);
 
-  const startRide = useCallback(() => {
+  const startRide = useCallback((forcedMetaphor?: MetaphorName) => {
     setProgress(0);
     setRunId((id) => id + 1);
-    // Phase 3 — "再跑一次" 重 pick metaphor (用户场景 §17: visit-pool 体感
-    // 兑现 = 每次跑都可能换 metaphor). hard reload 也换 (Date.now seed 不同).
-    setPick(selectMetaphorForVisit());
+    // Phase 3 — "再跑一次" 重 pick metaphor (visit-pool 体感兑现). user 从
+    // dropdown 显式选 metaphor 时优先 (forcedMetaphor), 不走 random.
+    if (forcedMetaphor) {
+      setPick({ metaphor: forcedMetaphor, visitSeed: Date.now() });
+    } else {
+      setPick(selectMetaphorForVisit());
+    }
     setMode("running");
     if (typeof window !== "undefined") {
       requestAnimationFrame(() => {
@@ -1382,6 +1386,15 @@ export default function Home() {
       });
     }
   }, []);
+  // "玩一玩" 按钮右侧 dropdown — 让用户显式选 metaphor (生命之轮 / 生命披萨).
+  // 不选直接点主按钮 = random per visit pool.
+  const [metaphorMenuOpen, setMetaphorMenuOpen] = useState(false);
+  useEffect(() => {
+    if (!metaphorMenuOpen) return;
+    const close = () => setMetaphorMenuOpen(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [metaphorMenuOpen]);
 
   // Phase 1.6 子任务 C — 统一"分享"按钮 + Web Share API
   // mobile (pointer:coarse + canShare files): navigator.share → share sheet → "保存到相册"
@@ -2519,8 +2532,7 @@ export default function Home() {
                       分，外缘代表 10 分。分数越低，外缘越靠近圆心。通过你的分数，重新画出此刻的生命之轮。
                     </p>
                     <p>
-                      生命之轮帮你看到不同领域目前正在如何影响你的生活。想想看：如果你人生的马车就在这一车轮上前进，你的路途会有多平坦
-                      / 颠簸？生命之轮还会让我们看到自己想往哪个方向走。
+                      生命之轮帮你看到不同领域目前如何影响你的生活，也会让你看到自己想往哪个方向走。
                     </p>
                   </div>
                 </details>
@@ -2555,13 +2567,60 @@ export default function Home() {
               </div>
 
               {evalPhase === "ready" && (
-                <button
-                  type="button"
-                  onClick={startRide}
-                  className="fade-rise w-full rounded-full bg-zinc-900 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
-                >
-                  玩一玩 →
-                </button>
+                <div className="fade-rise relative w-full">
+                  <div className="flex w-full overflow-hidden rounded-full bg-zinc-900 shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => startRide()}
+                      className="flex-1 px-6 py-3 text-base font-medium text-white transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+                    >
+                      玩一玩 →
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="选择玩哪个"
+                      aria-haspopup="menu"
+                      aria-expanded={metaphorMenuOpen}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMetaphorMenuOpen((v) => !v);
+                      }}
+                      className="border-l border-zinc-700/60 px-4 text-white transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+                    >
+                      <span aria-hidden className="block text-xs">▾</span>
+                    </button>
+                  </div>
+                  {metaphorMenuOpen && (
+                    <div
+                      role="menu"
+                      className="absolute right-0 top-full z-10 mt-2 w-44 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMetaphorMenuOpen(false);
+                          startRide("car");
+                        }}
+                        className="block w-full px-4 py-2.5 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-50"
+                      >
+                        生命之轮
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMetaphorMenuOpen(false);
+                          startRide("pizza");
+                        }}
+                        className="block w-full px-4 py-2.5 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-50"
+                      >
+                        生命披萨
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* a11y fallback — slider 折叠在 details 后。键盘 / screen reader
@@ -2666,7 +2725,7 @@ export default function Home() {
                 </button>
                 <button
                   type="button"
-                  onClick={startRide}
+                  onClick={() => startRide()}
                   className="self-start text-sm text-zinc-500 underline-offset-4 transition-colors hover:text-zinc-700 hover:underline"
                 >
                   再玩一次
